@@ -1,0 +1,21 @@
+# --- backend (Gradle / Kotlin) ---
+backend/.gradle/
+backend/build/
+backend/bin/
+!backend/gradle/wrapper/gradle-wrapper.jar
+
+# --- frontend (Node / Vite) ---
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# --- env / secrets ---
+.env
+.env.*
+!.env.example
+
+# --- os / editor ---
+.DS_Store
+.idea/
+*.iml
+.vscode/
