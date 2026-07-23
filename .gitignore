@@ -21,6 +21,9 @@ __pycache__/
 # --- playwright / scratch ---
 .playwright-mcp/
 
+# --- local docker override (개발자별 포트 등) ---
+docker-compose.override.yml
+
 # --- os / editor ---
 .DS_Store
 .idea/
