@@ -19,6 +19,11 @@ MAXRAW = 400          # 중복/비음료 제거 대비 넉넉히 수집
 
 DRINK_HINT = re.compile(r"(음료|드링크|워터|라떼|밀크|탄산|콜라|사이다|스파클링|에이드|아이스티|홍차|스무디|쉐이크|마시는|우유|두유|이온)")
 
+# 카테고리 확정어(이게 없으면 해당 카테고리 제품이 아님) + 잡탕/유통 잡음어(있으면 제외)
+REQUIRE = {"protein": re.compile(r"단백질|프로틴|protein", re.I),
+           "zero":    re.compile(r"제로|zero|무설탕|무가당|다이어트|라이트", re.I)}
+JUNK = re.compile(r"골라\s*담기|낱개|벌크|도매|사은품|음료수|캔음료|미니\s*캔|대용량|업소|편의점|뚱캔|담아|맛선택|맛골라")
+
 def creds():
     cid = os.environ.get("NAVER_ID", ""); sec = os.environ.get("NAVER_SECRET", "")
     if cid and sec: return cid, sec
@@ -71,8 +76,10 @@ def is_drink(r):
 def build(category, query, out_name):
     raw = search(query)
     norm = [normalize(it) for it in raw]
+    req = REQUIRE[category]
     drinks = [r for r in norm if is_drink(r)]
-    singles = [r for r in drinks if not r["is_bundle"] and r["clean_name"]]
+    singles = [r for r in drinks if not r["is_bundle"] and r["clean_name"]
+               and req.search(r["full_name"]) and not JUNK.search(r["full_name"])]
     # (라인+맛) 중복 병합 — 관련도 순서 유지, 첫 등장만 채택, 병합 수 기록
     uniq = OrderedDict()
     for r in singles:
