@@ -1,0 +1,474 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Spring · Kotlin 백엔드 코드 리뷰 (Django 비교)</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#F3F5F0; --card:#fff; --ink:#14201A; --soft:#59635C; --line:#E4E7DF;
+  --brand:#1E6E48; --deep:#12241C; --lime:#C3ED4E; --lime-ink:#34430C;
+  --kt:#1E6E48; --dj:#2563956e; --dj-ink:#255E9B; --warn:#DFA02B;
+  --font:"Pretendard",system-ui,-apple-system,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+  --mono:"SF Mono",ui-monospace,Menlo,"D2Coding",Consolas,monospace;
+  --t:clamp(1.5rem,4.2vw,3rem); --h:clamp(1.15rem,2.7vw,2rem); --b:clamp(.8rem,1.45vw,1.05rem);
+  --s:clamp(.66rem,1.15vw,.82rem); --code:clamp(.6rem,1.15vw,.82rem);
+  --pad:clamp(1rem,3.5vw,3rem); --gap:clamp(.5rem,1.6vh,1.1rem);
+}
+html,body{height:100%;overflow-x:hidden}
+html{scroll-snap-type:y mandatory;scroll-behavior:smooth}
+body{background:var(--bg);color:var(--ink);font-family:var(--font);line-height:1.55;
+  word-break:keep-all;overflow-wrap:break-word;-webkit-font-smoothing:antialiased}
+.slide{width:100vw;height:100vh;height:100dvh;overflow:hidden;scroll-snap-align:start;
+  display:flex;flex-direction:column;justify-content:center;padding:var(--pad)}
+.eyebrow{display:inline-block;background:var(--lime);color:var(--lime-ink);font-size:.66rem;
+  font-weight:800;letter-spacing:.14em;text-transform:uppercase;padding:.28rem .7rem;border-radius:999px;align-self:flex-start;margin-bottom:.7rem}
+.num{font-size:var(--s);font-weight:800;letter-spacing:.14em;color:var(--soft);text-transform:uppercase;margin-bottom:.35rem}
+h1{font-size:var(--t);font-weight:800;line-height:1.12;letter-spacing:-.03em;text-wrap:balance}
+h2{font-size:var(--h);font-weight:800;line-height:1.18;letter-spacing:-.025em;margin-bottom:var(--gap);text-wrap:balance}
+p.lead{font-size:var(--b);color:var(--soft);max-width:64ch}
+b,strong{font-weight:800}
+.reveal>*{opacity:0;transform:translateY(12px);transition:.5s ease}
+.slide.in .reveal>*{opacity:1;transform:none}
+.slide.in .reveal>*:nth-child(2){transition-delay:.06s}
+.slide.in .reveal>*:nth-child(3){transition-delay:.12s}
+.slide.in .reveal>*:nth-child(4){transition-delay:.18s}
+.slide.in .reveal>*:nth-child(5){transition-delay:.24s}
+
+/* code */
+pre{background:var(--deep);color:#EAF1EA;border-radius:12px;padding:clamp(.7rem,1.6vw,1.1rem);
+  font-family:var(--mono);font-size:var(--code);line-height:1.5;overflow:auto;max-height:100%;white-space:pre}
+pre .c{color:#8FB79E}     /* 주석 */
+pre .k{color:var(--lime)} /* 키워드/강조 */
+pre .s{color:#E6C98F}     /* 문자열 */
+.cmp{display:grid;grid-template-columns:1fr 1fr;gap:clamp(.6rem,1.6vw,1.1rem);min-height:0}
+@media(max-width:820px){.cmp{grid-template-columns:1fr}}
+.col{display:flex;flex-direction:column;min-height:0}
+.lbl{font-size:var(--s);font-weight:800;padding:.25rem .6rem;border-radius:8px 8px 0 0;letter-spacing:.02em}
+.lbl.kt{background:var(--brand);color:#fff}
+.lbl.dj{background:#DDE8F3;color:var(--dj-ink)}
+.col pre{border-radius:0 0 12px 12px;flex:1}
+.two{display:grid;grid-template-columns:1.1fr .9fr;gap:clamp(.7rem,2vw,1.4rem);align-items:start;min-height:0}
+@media(max-width:820px){.two{grid-template-columns:1fr}}
+ul{list-style:none;display:flex;flex-direction:column;gap:.4rem;margin-top:.3rem}
+li{font-size:var(--b);padding-left:1.1rem;position:relative}
+li::before{content:"";position:absolute;left:0;top:.62em;width:6px;height:6px;border-radius:50%;background:var(--brand)}
+li b{color:var(--brand)}
+code.inl{font-family:var(--mono);background:#E7EEE9;color:var(--deep);padding:.05rem .3rem;border-radius:5px;font-size:.9em}
+
+/* tables */
+table{border-collapse:collapse;width:100%;font-size:var(--s)}
+th,td{text-align:left;padding:.4rem .55rem;border-bottom:1px solid var(--line);vertical-align:top}
+th{color:var(--soft);text-transform:uppercase;letter-spacing:.05em;font-size:.66rem}
+td.kt{color:var(--brand);font-weight:700;font-family:var(--mono)}
+td.dj{color:var(--dj-ink);font-family:var(--mono)}
+.tbl-wrap{overflow:auto;min-height:0}
+
+/* diagram */
+.flow{display:flex;flex-wrap:wrap;gap:.5rem;align-items:stretch;margin-top:.4rem}
+.node{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:.6rem .8rem;flex:1 1 120px}
+.node b{display:block;font-size:.95rem}.node span{font-size:var(--s);color:var(--soft)}
+.node .dj{display:block;font-size:.7rem;color:var(--dj-ink);margin-top:.2rem}
+.arr{align-self:center;color:var(--brand);font-weight:800}
+@media(max-width:700px){.flow{flex-direction:column}.arr{display:none}}
+
+.slide--deep{background:var(--deep);color:#EAF1EA}
+.slide--deep .num{color:#8FB79E}.slide--deep p.lead{color:#A9C4B0}
+.big{color:var(--lime)}
+.counter{position:fixed;left:1.2rem;bottom:1rem;font-size:var(--s);font-weight:800;color:var(--soft);z-index:20}
+.dots{position:fixed;right:1rem;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;gap:.5rem;z-index:20}
+.dots button{width:8px;height:8px;border-radius:50%;border:0;padding:0;background:var(--line);cursor:pointer}
+.dots button.active{background:var(--brand);transform:scale(1.4)}
+@media(max-height:560px){.dots{display:none}}
+@media(prefers-reduced-motion:reduce){*{transition-duration:.2s!important}html{scroll-behavior:auto}.reveal>*{opacity:1;transform:none}}
+</style>
+</head>
+<body>
+<main>
+
+<!-- 1 -->
+<section class="slide slide--deep" id="s1">
+  <div class="reveal">
+    <div class="eyebrow">Backend Code Review</div>
+    <div class="num">Spring Boot · Kotlin · for Django devs</div>
+    <h1>스프링/코틀린 백엔드,<br><span class="big">Django</span>로 이해하기</h1>
+    <p class="lead" style="margin-top:1rem">성분 분석 엔드포인트 <code class="inl" style="background:rgba(255,255,255,.1);color:#EAF1EA">POST /api/analyze</code> 코드를 한 줄씩, 파이썬/Django에 대응해 설명함. 어노테이션·import·타입이 왜 있는지까지.</p>
+  </div>
+</section>
+
+<!-- 2 큰 그림 -->
+<section class="slide" id="s2">
+  <div class="reveal" style="min-height:0;display:flex;flex-direction:column">
+    <div class="num">01 · 요청 흐름</div>
+    <h2>요청이 지나가는 길 — Django와 같은 구조</h2>
+    <div class="flow">
+      <div class="node"><b>브라우저</b><span>사진 base64 POST</span><span class="dj">fetch()</span></div>
+      <div class="arr">→</div>
+      <div class="node"><b>Controller</b><span>URL 라우팅·요청 파싱</span><span class="dj">urls.py + view</span></div>
+      <div class="arr">→</div>
+      <div class="node"><b>Service</b><span>비즈니스 로직</span><span class="dj">services.py</span></div>
+      <div class="arr">→</div>
+      <div class="node"><b>Claude API</b><span>비전 분석</span><span class="dj">requests.post</span></div>
+      <div class="arr">→</div>
+      <div class="node"><b>JSON 응답</b><span>성분 리스크</span><span class="dj">JsonResponse</span></div>
+    </div>
+    <ul style="margin-top:1rem">
+      <li>Django의 <b>urls.py → view → 서비스 → 외부호출 → 응답</b> 흐름과 1:1로 대응됨.</li>
+      <li>다른 점은 "누가 라우팅·파싱·주입을 해주냐" — 스프링은 <b>어노테이션</b>으로 프레임워크가 대신 함.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- 3 구조 매핑 -->
+<section class="slide" id="s3">
+  <div class="reveal" style="display:flex;flex-direction:column;min-height:0">
+    <div class="num">02 · 파일과 역할</div>
+    <h2>Spring ↔ Django 치트시트</h2>
+    <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>Spring / Kotlin</th><th>Django / DRF</th><th>역할</th></tr></thead>
+      <tbody>
+        <tr><td class="kt">build.gradle.kts</td><td class="dj">requirements.txt</td><td>의존성·빌드 정의</td></tr>
+        <tr><td class="kt">application.properties</td><td class="dj">settings.py</td><td>설정·환경변수</td></tr>
+        <tr><td class="kt">@RestController + @RequestMapping</td><td class="dj">urls.py + views.py</td><td>URL 라우팅 + 뷰</td></tr>
+        <tr><td class="kt">@Service 클래스</td><td class="dj">services.py / util</td><td>비즈니스 로직</td></tr>
+        <tr><td class="kt">data class + @RequestBody</td><td class="dj">Serializer / request.data</td><td>요청 본문 파싱</td></tr>
+        <tr><td class="kt">JsonMapper (Jackson)</td><td class="dj">json 모듈</td><td>JSON 직렬화</td></tr>
+        <tr><td class="kt">java.net.http.HttpClient</td><td class="dj">requests</td><td>외부 API 호출</td></tr>
+        <tr><td class="kt">@SpringBootApplication + main</td><td class="dj">manage.py runserver</td><td>앱 실행(내장 서버)</td></tr>
+      </tbody>
+    </table>
+    </div>
+  </div>
+</section>
+
+<!-- 4 의존성 -->
+<section class="slide" id="s4">
+  <div class="reveal">
+    <div class="num">03 · 의존성</div>
+    <h2>build.gradle.kts = requirements.txt + 설정</h2>
+    <div class="cmp">
+      <div class="col"><div class="lbl kt">Kotlin · Gradle</div>
+<pre><span class="c">// 필요한 "스타터"(묶음 패키지) 선언</span>
+implementation(<span class="s">"…spring-boot-starter-webmvc"</span>) <span class="c">// 웹서버+MVC</span>
+implementation(<span class="s">"…spring-boot-starter-data-jpa"</span>) <span class="c">// ORM</span>
+implementation(<span class="s">"…jackson-module-kotlin"</span>)        <span class="c">// JSON</span>
+runtimeOnly(<span class="s">"org.postgresql:postgresql"</span>)         <span class="c">// DB 드라이버</span></pre></div>
+      <div class="col"><div class="lbl dj">Python · pip</div>
+<pre><span class="c"># requirements.txt</span>
+Django            <span class="c"># 웹+ORM 한 몸</span>
+djangorestframework  <span class="c"># API</span>
+psycopg2-binary   <span class="c"># DB 드라이버</span>
+requests          <span class="c"># HTTP</span></pre></div>
+    </div>
+    <ul>
+      <li><b>starter</b> = 관련 라이브러리 묶음. <code class="inl">webmvc</code> 하나로 내장 톰캣·라우팅·JSON이 다 들어옴.</li>
+      <li>Gradle이 <code class="inl">pip install</code> + 빌드 도구 역할을 동시에 함(선언하면 자동 다운로드).</li>
+    </ul>
+  </div>
+</section>
+
+<!-- 5 설정 -->
+<section class="slide" id="s5">
+  <div class="reveal">
+    <div class="num">04 · 설정</div>
+    <h2>application.properties = settings.py</h2>
+    <div class="cmp">
+      <div class="col"><div class="lbl kt">application.properties</div>
+<pre>spring.datasource.url=<span class="s">jdbc:postgresql://…</span>
+<span class="c"># 환경변수 주입: ${이름:기본값}</span>
+anthropic.api-key=<span class="k">${ANTHROPIC_API_KEY:}</span>
+anthropic.model=<span class="k">${ANTHROPIC_MODEL:claude-sonnet-5}</span></pre></div>
+      <div class="col"><div class="lbl dj">settings.py</div>
+<pre>DATABASES = { <span class="s">"default"</span>: {…} }
+<span class="c"># 환경변수 주입</span>
+ANTHROPIC_API_KEY = os.environ.get(
+    <span class="s">"ANTHROPIC_API_KEY"</span>, <span class="s">""</span>)</pre></div>
+    </div>
+    <ul>
+      <li><code class="inl">${ANTHROPIC_API_KEY:}</code> = 환경변수 있으면 그 값, 없으면 빈 문자열 → <code class="inl">os.environ.get(..., "")</code>와 동일.</li>
+      <li>키를 코드가 아니라 <b>설정/환경변수</b>에 두는 것도 Django와 같은 원칙.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- 6 부팅 -->
+<section class="slide" id="s6">
+  <div class="reveal">
+    <div class="num">05 · 앱 실행</div>
+    <h2>@SpringBootApplication + main() = runserver</h2>
+    <div class="cmp">
+      <div class="col"><div class="lbl kt">Kotlin</div>
+<pre><span class="k">@SpringBootApplication</span>   <span class="c">// 자동설정·컴포넌트 스캔 켜기</span>
+class IngredientHunterApplication
+
+fun main(args: Array&lt;String&gt;) {
+    runApplication&lt;IngredientHunterApplication&gt;(*args)
+    <span class="c">// 내장 톰캣 서버가 여기서 뜸(8080)</span>
+}</pre></div>
+      <div class="col"><div class="lbl dj">Django</div>
+<pre><span class="c"># 진입점이 이미 제공됨</span>
+$ python manage.py runserver
+<span class="c"># settings.py의 INSTALLED_APPS를</span>
+<span class="c"># Django가 스캔·로딩</span></pre></div>
+    </div>
+    <ul>
+      <li>컴파일 언어라 <b>main() 진입점</b>이 명시적으로 있음. 실행 = <code class="inl">./gradlew bootRun</code>.</li>
+      <li><code class="inl">@SpringBootApplication</code>이 "이 패키지 밑 @Controller/@Service를 다 찾아 등록" 하라고 지시함(=INSTALLED_APPS 자동판).</li>
+    </ul>
+  </div>
+</section>
+
+<!-- 7 어노테이션 개념 -->
+<section class="slide slide--deep" id="s7">
+  <div class="reveal">
+    <div class="num">06 · 핵심 개념</div>
+    <h2>어노테이션(@) = 파이썬 데코레이터의 사촌</h2>
+    <p class="lead"><code class="inl" style="background:rgba(255,255,255,.1);color:#EAF1EA">@무언가</code>는 클래스·함수에 <b class="big">"표식"</b>을 붙여, 프레임워크가 그걸 보고 특별히 취급하게 하는 것임. 실행 코드가 아니라 "메타 정보".</p>
+    <ul style="margin-top:1rem">
+      <li><code class="inl" style="background:rgba(255,255,255,.12);color:#EAF1EA">@RestController</code> → "이 클래스는 API 뷰들의 모음" (DRF <code class="inl" style="background:rgba(255,255,255,.12);color:#EAF1EA">@api_view</code>/APIView 느낌)</li>
+      <li><code class="inl" style="background:rgba(255,255,255,.12);color:#EAF1EA">@Service</code> → "이건 로직 담당 부품, 등록해두고 필요하면 꽂아줘"</li>
+      <li><code class="inl" style="background:rgba(255,255,255,.12);color:#EAF1EA">@PostMapping("/analyze")</code> → "POST /analyze 오면 이 함수" (urls.py의 path)</li>
+      <li>Django 데코레이터와 달리 <b>런타임에 프레임워크가 스캔</b>해서 배선함.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- 8 컨트롤러 -->
+<section class="slide" id="s8">
+  <div class="reveal" style="display:flex;flex-direction:column;min-height:0">
+    <div class="num">07 · 컨트롤러</div>
+    <h2>AnalyzeController — 한 줄씩</h2>
+    <div class="two">
+      <pre><span class="k">@RestController</span>                 <span class="c">// ① API 컨트롤러</span>
+<span class="k">@RequestMapping</span>(<span class="s">"/api"</span>)         <span class="c">// ② 공통 접두 URL</span>
+class AnalyzeController(
+    <span class="k">private val</span> analyzeService: AnalyzeService  <span class="c">// ③ 주입</span>
+) {
+    <span class="k">@PostMapping</span>(<span class="s">"/analyze"</span>)     <span class="c">// ④ POST /api/analyze</span>
+    fun analyze(<span class="k">@RequestBody</span> req: AnalyzeRequest): Any =  <span class="c">// ⑤</span>
+        analyzeService.analyze(req.imageBase64, req.mediaType)
+}</pre>
+      <ul>
+        <li><b>①②④</b> = Django <code class="inl">urls.py</code>의 <code class="inl">path("api/analyze", …)</code> + DRF <code class="inl">@api_view(["POST"])</code>를 어노테이션으로 붙인 것.</li>
+        <li><b>③</b> 생성자에 서비스를 <b>선언만</b> 하면 스프링이 알아서 넣어줌(다음 장).</li>
+        <li><b>⑤</b> <code class="inl">@RequestBody</code> = 요청 JSON을 <b>객체로 자동 변환</b>(DRF Serializer/ <code class="inl">request.data</code>).</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- 9 DI -->
+<section class="slide" id="s9">
+  <div class="reveal">
+    <div class="num">08 · 의존성 주입(DI)</div>
+    <h2>"객체를 프레임워크가 꽂아준다"</h2>
+    <div class="cmp">
+      <div class="col"><div class="lbl kt">Kotlin · Spring</div>
+<pre>class AnalyzeController(
+  <span class="c">// 스프링이 AnalyzeService를 만들어</span>
+  <span class="c">// 여기 자동으로 넣어줌(주입)</span>
+  <span class="k">private val</span> analyzeService: AnalyzeService
+)</pre></div>
+      <div class="col"><div class="lbl dj">Python · Django</div>
+<pre><span class="c"># 보통 직접 생성/임포트</span>
+from .services import AnalyzeService
+def analyze(request):
+    svc = AnalyzeService()  <span class="c"># 손수 생성</span></pre></div>
+    </div>
+    <ul>
+      <li><code class="inl">@Service</code>로 등록된 부품을 스프링이 <b>한 번 만들어 재사용</b>하고, 필요한 곳에 꽂아줌.</li>
+      <li>장점: 테스트 시 가짜(mock)로 바꿔 끼우기 쉬움. Django엔 기본 DI가 없어 직접 관리함.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- 10 data class -->
+<section class="slide" id="s10">
+  <div class="reveal">
+    <div class="num">09 · 요청 파싱</div>
+    <h2>data class + @RequestBody = Serializer</h2>
+    <div class="cmp">
+      <div class="col"><div class="lbl kt">Kotlin</div>
+<pre><span class="c">// JSON {imageBase64, mediaType} 을</span>
+<span class="c">// 이 타입 객체로 자동 변환</span>
+data class AnalyzeRequest(
+    val imageBase64: String? = null,
+    val mediaType: String? = null,
+)</pre></div>
+      <div class="col"><div class="lbl dj">Python · DRF</div>
+<pre>class AnalyzeRequest(serializers.Serializer):
+    imageBase64 = serializers.CharField(
+        required=False, allow_null=True)
+    mediaType = serializers.CharField(
+        required=False, allow_null=True)</pre></div>
+    </div>
+    <ul>
+      <li><b>data class</b> = 값만 담는 가벼운 클래스(파이썬 <code class="inl">@dataclass</code>/ DRF Serializer와 유사).</li>
+      <li>필드에 <b>타입</b>이 박혀 있어, 잘못된 JSON이면 <b>컴파일·요청 단계에서</b> 걸림(타입 안전).</li>
+    </ul>
+  </div>
+</section>
+
+<!-- 11 서비스 헤더 + @Value -->
+<section class="slide" id="s11">
+  <div class="reveal">
+    <div class="num">10 · 서비스</div>
+    <h2>@Service + @Value(설정 주입)</h2>
+    <pre><span class="k">@Service</span>   <span class="c">// "로직 부품"으로 등록 → 컨트롤러에 주입 가능</span>
+class AnalyzeService(
+    <span class="k">@Value</span>(<span class="s">"\${anthropic.api-key:}"</span>) <span class="k">private val</span> apiKey: String,   <span class="c">// 설정값 주입</span>
+    <span class="k">@Value</span>(<span class="s">"\${anthropic.model:claude-sonnet-5}"</span>) <span class="k">private val</span> model: String,
+)</pre>
+    <ul>
+      <li><code class="inl">@Value("\${anthropic.api-key:}")</code> = properties/환경변수의 값을 <b>생성 시 자동으로 꽂음</b>.</li>
+      <li>Django라면 <code class="inl">settings.ANTHROPIC_API_KEY</code>를 서비스 안에서 읽는 것과 같음 — 다만 여기선 <b>주입</b>받음.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- 12 imports -->
+<section class="slide" id="s12">
+  <div class="reveal" style="display:flex;flex-direction:column;min-height:0">
+    <div class="num">11 · import</div>
+    <h2>왜 이렇게 import가 많나</h2>
+    <div class="two">
+<pre><span class="k">import</span> …web.bind.annotation.*   <span class="c">// @RestController 등</span>
+<span class="k">import</span> …stereotype.Service       <span class="c">// @Service</span>
+<span class="k">import</span> …annotation.Value         <span class="c">// @Value</span>
+<span class="k">import</span> …core.io.ClassPathResource<span class="c">// 리소스 읽기</span>
+<span class="k">import</span> tools.jackson…JsonMapper  <span class="c">// JSON</span>
+<span class="k">import</span> java.net.http.HttpClient  <span class="c">// HTTP(표준)</span></pre>
+      <ul>
+        <li>파이썬 <code class="inl">from … import …</code>와 개념 동일 — 쓰는 것만 명시적으로 가져옴.</li>
+        <li>차이: 패키지 경로가 <b>도메인 역순</b>으로 길고, 안 쓰는 import는 <b>경고</b>가 남.</li>
+        <li><code class="inl">java.net.http</code>·<code class="inl">java.*</code>는 <b>JDK 표준</b>이라 설치 불필요(파이썬 <code class="inl">requests</code>는 pip 설치 vs 표준 <code class="inl">http.client</code>).</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- 13 KB 로드 + JSON -->
+<section class="slide" id="s13">
+  <div class="reveal">
+    <div class="num">12 · 리소스 · JSON</div>
+    <h2>KB 파일 읽기 &amp; JSON 다루기</h2>
+    <div class="cmp">
+      <div class="col"><div class="lbl kt">Kotlin</div>
+<pre><span class="c">// jar 안에 패키징된 리소스 읽기</span>
+val kb = ClassPathResource(<span class="s">"ingredient-risk-kb.md"</span>)
+    .inputStream.readBytes().decodeToString()
+
+<span class="c">// dict → JSON 문자열 / JSON → 객체</span>
+json.writeValueAsString(mapOf(<span class="s">"model"</span> to model))
+json.readValue(body, Map::class.java)</pre></div>
+      <div class="col"><div class="lbl dj">Python</div>
+<pre>kb = open(
+  BASE_DIR/<span class="s">"ingredient_risk_kb.md"</span>).read()
+
+<span class="c"># dict → JSON / JSON → dict</span>
+json.dumps({<span class="s">"model"</span>: model})
+json.loads(body)</pre></div>
+    </div>
+    <ul>
+      <li><code class="inl">mapOf("a" to 1)</code> = 파이썬 <code class="inl">{"a": 1}</code> (딕셔너리). 중첩도 동일.</li>
+      <li><b>Jackson</b>(JsonMapper) = 파이썬 <code class="inl">json</code> 모듈. <code class="inl">writeValueAsString</code>=<code class="inl">dumps</code>, <code class="inl">readValue</code>=<code class="inl">loads</code>.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- 14 외부 호출 -->
+<section class="slide" id="s14">
+  <div class="reveal">
+    <div class="num">13 · 외부 API 호출</div>
+    <h2>HttpClient = requests.post</h2>
+    <div class="cmp">
+      <div class="col"><div class="lbl kt">Kotlin (JDK 표준)</div>
+<pre>val req = HttpRequest.newBuilder(URI.create(url))
+    .header(<span class="s">"x-api-key"</span>, apiKey)
+    .header(<span class="s">"anthropic-version"</span>, <span class="s">"2023-06-01"</span>)
+    .POST(BodyPublishers.ofString(body))
+    .build()
+val res = http.send(req, BodyHandlers.ofString())
+res.body()   <span class="c">// 응답 문자열</span></pre></div>
+      <div class="col"><div class="lbl dj">Python</div>
+<pre>res = requests.post(
+    url,
+    headers={<span class="s">"x-api-key"</span>: api_key,
+             <span class="s">"anthropic-version"</span>: <span class="s">"2023-06-01"</span>},
+    data=body)
+res.text   <span class="c"># 응답 문자열</span></pre></div>
+    </div>
+    <ul>
+      <li>개념 동일(URL·헤더·바디·전송). 코틀린은 <b>빌더</b>로 한 조각씩 쌓아 만듦.</li>
+      <li>이미지는 <code class="inl">{type:"image", source:{type:"base64", data:…}}</code> 블록으로 넣음(Claude 비전 형식).</li>
+    </ul>
+  </div>
+</section>
+
+<!-- 15 로직 흐름 + null -->
+<section class="slide" id="s15">
+  <div class="reveal" style="display:flex;flex-direction:column;min-height:0">
+    <div class="num">14 · 로직 &amp; 코틀린 특징</div>
+    <h2>analyze() 흐름 + null 안전</h2>
+    <div class="two">
+<pre>fun analyze(imageBase64: String<span class="k">?</span>, …): Any {
+  <span class="c">// 키 없으면 데모로 폴백</span>
+  <span class="k">if</span> (apiKey.isBlank() || imageBase64.isNullOrBlank())
+      <span class="k">return</span> json.readValue(DEMO, Map::class.java)
+  … Claude 호출 …
+  val text = (body[<span class="s">"content"</span>] <span class="k">as?</span> List&lt;*&gt;)
+      ?.firstOrNull { it[<span class="s">"type"</span>] == <span class="s">"text"</span> }
+      ?.get(<span class="s">"text"</span>) <span class="k">as?</span> String
+      <span class="k">?:</span> <span class="k">return</span> mapOf(<span class="s">"error"</span> to <span class="s">"empty"</span>)
+  <span class="k">return</span> json.readValue(stripFence(text), Map::class.java)
+}</pre>
+      <ul>
+        <li><code class="inl">String?</code>의 <b>?</b> = "null일 수 있음". 파이썬엔 없는 <b>컴파일러 null 검사</b>.</li>
+        <li><code class="inl">?.</code> null이면 건너뜀 · <code class="inl">?:</code> null이면 기본값(엘비스) · <code class="inl">as?</code> 안전 캐스팅.</li>
+        <li>덕분에 <b>NoneType 에러가 런타임에 터지는 일</b>을 코틀린은 컴파일 때 막음.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- 16 요약 + 실행 -->
+<section class="slide slide--deep" id="s16">
+  <div class="reveal">
+    <div class="num">15 · 요약 &amp; 실행</div>
+    <h2>정리 — 구조는 Django와 <span class="big">같고</span>, 배선을 어노테이션이 함</h2>
+    <ul style="margin-top:.6rem">
+      <li>라우팅=<code class="inl" style="background:rgba(255,255,255,.12);color:#EAF1EA">@RestController/@PostMapping</code>, 로직=<code class="inl" style="background:rgba(255,255,255,.12);color:#EAF1EA">@Service</code>, 파싱=<code class="inl" style="background:rgba(255,255,255,.12);color:#EAF1EA">@RequestBody+data class</code>, 설정=<code class="inl" style="background:rgba(255,255,255,.12);color:#EAF1EA">@Value</code>.</li>
+      <li>추가로 얻는 것: <b>타입·null 안전</b>(런타임 에러 ↓), <b>DI</b>(테스트 쉬움), <b>내장 서버</b>.</li>
+    </ul>
+    <pre style="margin-top:1rem"><span class="c"># 실행</span>
+docker compose up -d          <span class="c"># Postgres</span>
+cd backend &amp;&amp; ./gradlew bootRun  <span class="c"># 8080</span>
+<span class="c"># 키 없으면 데모 응답, ANTHROPIC_API_KEY 주면 실제 분석</span></pre>
+    <p class="lead" style="margin-top:.8rem">다음: 프론트(React/Vite)에서 <code class="inl" style="background:rgba(255,255,255,.1);color:#EAF1EA">/api/analyze</code> 호출 → 결과 카드(M3), 이후 성분 KB를 DB로(M1).</p>
+  </div>
+</section>
+
+</main>
+<div class="counter"><span id="cur">01</span> / 16</div>
+<nav class="dots" id="dots" aria-label="슬라이드 이동"></nav>
+<script>
+(function(){
+  const slides=[...document.querySelectorAll('.slide')], cur=document.getElementById('cur'), dw=document.getElementById('dots');
+  let idx=0, lock=false;
+  slides.forEach((s,i)=>{const b=document.createElement('button');b.onclick=()=>go(i);dw.appendChild(b);});
+  const dots=[...dw.children];
+  function set(i){idx=i;cur.textContent=('0'+(i+1)).slice(-2);dots.forEach((d,j)=>d.classList.toggle('active',j===i));}
+  function go(i){i=Math.max(0,Math.min(slides.length-1,i));slides[i].scrollIntoView({behavior:'smooth'});set(i);}
+  new IntersectionObserver(es=>es.forEach(e=>{if(e.isIntersecting){e.target.classList.add('in');set(slides.indexOf(e.target));}}),{threshold:.55}).observe&&
+    slides.forEach(s=>new IntersectionObserver(es=>es.forEach(e=>{if(e.isIntersecting){e.target.classList.add('in');set(slides.indexOf(e.target));}}),{threshold:.55}).observe(s));
+  addEventListener('keydown',e=>{if([' ','ArrowDown','ArrowRight','PageDown'].includes(e.key)){e.preventDefault();go(idx+1);}else if(['ArrowUp','ArrowLeft','PageUp'].includes(e.key)){e.preventDefault();go(idx-1);}else if(e.key==='Home')go(0);else if(e.key==='End')go(slides.length-1);});
+  addEventListener('wheel',e=>{if(Math.abs(e.deltaY)<12||lock)return;lock=true;go(idx+(e.deltaY>0?1:-1));setTimeout(()=>lock=false,700);},{passive:true});
+  let sy=null;addEventListener('touchstart',e=>sy=e.touches[0].clientY,{passive:true});
+  addEventListener('touchend',e=>{if(sy===null)return;const d=sy-e.changedTouches[0].clientY;if(Math.abs(d)>45)go(idx+(d>0?1:-1));sy=null;},{passive:true});
+  set(0);slides[0].classList.add('in');
+})();
+</script>
+</body>
+</html>
