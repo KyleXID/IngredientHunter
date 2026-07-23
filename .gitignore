@@ -14,6 +14,10 @@ frontend/.vite/
 .env.*
 !.env.example
 
+# --- python (poc scripts) ---
+__pycache__/
+*.pyc
+
 # --- os / editor ---
 .DS_Store
 .idea/
