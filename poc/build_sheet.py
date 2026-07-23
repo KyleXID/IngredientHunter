@@ -10,42 +10,59 @@ import json, re, csv, os, glob, unicodedata
 ROOT = "/Users/ihyeongju/Develop/Private/IngredientHunter"
 POC = os.path.join(ROOT, "poc")
 
-# 맛(flavor) — line_key 산출 시 제거. 카테고리어(제로/콜라/사이다)는 라인 식별에 필요하므로 제외.
-FLAVORS = ["초코바나나","초콜릿","초코","딸기","바나나","멜론","카라멜","밀크티","밀크바닐라","바닐라",
-    "모카","고소한맛","고소한","오리지널","오리지날","플레인","샤인머스켓","샤인머스캣","머스켓","그레이프",
-    "포도","레몬","복숭아","청사과","사과","자몽","오렌지","파인애플","라임향","라임","유자","피치","커피"]
+# 맛(flavor) — clean_name에서 "첫 맛 토큰부터" 잘라 상품 라인명만 남긴다.
+# 콜라/사이다/제로는 브랜드·라인 식별어라 맛에서 제외.
+FLAVORS = ["초코바나나","초콜릿","초코","딸기","바나나","멜론","카라멜","밀크티","밀크바닐라","바닐라","모카",
+    "고소한","오리지널","오리지날","플레인","흑임자","미숫가루","곡물","검은콩","아몬드","귀리","밤","쌀",
+    "피스타치오","라떼","카페라떼","콜드브루","커피",
+    "그레이프","청포도","포도","샤인머스켓","샤인머스캣","머스켓","레몬","라임","복숭아","청사과","사과","애플",
+    "자몽","오렌지","파인애플","유자","피치","자두","매실","홍차","아이스티","얼그레이","우롱","녹차"]
+FSET = set(FLAVORS)
+CATEGORY_TAIL = {"음료","탄산음료","이온음료","혼합음료","프로틴음료","단백질음료","마시는","헬스음료","단백질"}
 
 # 브랜드 보정(제품라인→실제 브랜드). 필요시 계속 추가.
 BRAND_ALIAS = {"더단백":"빙그레","하이뮨":"일동후디스","셀렉스":"매일","프로핏":"매일",
     "테이크핏":"테이크핏","연세두유":"연세","보성홍차":"동원","갈배사이다":"해태htb"}
 
-BUNDLE = re.compile(r"(기획|세트|모음|혼합|믹스|묶음|박스|\d+\s*종|종\s*(모음|세트|기획)|\+)")
+BUNDLE = re.compile(r"(기획|세트|모음|혼합|믹스|묶음|박스|버라이어티|\d+\s*종|\d+\s*가지|종\s*(모음|세트|기획)|\+)")
 VOL = re.compile(r"(\d+(?:\.\d+)?)\s*(ml|mL|ML|L|g|kg)\b")
 CNT = re.compile(r"(\d+)\s*개")
 
+def _base(tok):
+    t = tok.strip("()[]{}·,./-+ ")
+    t = re.sub(r"\d+$", "", t)                     # 초코6 → 초코
+    for suf in ("맛", "향"):
+        if t.endswith(suf) and len(t) > 1: t = t[:-len(suf)]   # 그레이프맛→그레이프, 라임향→라임
+    return t
+
+def _is_flavor_tok(tok):
+    t = tok.strip("()[]{}·,./-+ ")
+    return _base(tok) in FSET or (t.endswith("맛") and len(t) > 1)
+
 def clean_name(name):
-    s = re.sub(r"\[[^\]]*\]", " ", name)          # [태그] 제거
-    s = s.split(",")[0]                            # 포장 꼬리(", 250ml, 18개") 절단
-    s = re.sub(r"\([^)]*\)", " ", s)               # (덴마크산)·(맛 나열) 제거
+    s = re.sub(r"\[[^\]]*\]", " ", name)           # [태그]
+    s = s.split(",")[0]                             # 포장 꼬리 절단
+    s = re.sub(r"\([^)]*\)", " ", s)                # 닫힌 괄호(맛 나열·원산지)
+    s = re.sub(r"\([^)]*$", " ", s)                 # 안 닫힌 괄호 이후 전부
     s = re.sub(r"\d+(?:\.\d+)?\s*(?:ml|mL|ML|L|g|kg)\b", " ", s)      # 용량
-    s = re.sub(r"\d+\s*(?:개입|개|팩|캔|박스|세트|종|p|P)\b", " ", s)  # 수량·단위
-    s = re.sub(r"(네이버단독|정기구독|정기배송|본사직영|무료배송|단독|한정|기획|모음|혼합|믹스|묶음|증정|총|세트|무라벨|업소용|배달용)", " ", s)
-    return re.sub(r"\s+", " ", s).strip()
+    s = re.sub(r"\d+\s*(?:개입|개|팩|캔|박스|세트|종|포|입|p|P)\b", " ", s)  # 수량·단위
+    s = re.sub(r"\d+\s*가지\s*맛?", " ", s)         # 6가지맛
+    s = re.sub(r"(네이버단독|정기구독|정기배송|본사직영|무료배송|단독|한정|기획|모음|혼합|믹스|묶음|증정|총|세트|무라벨|업소용|배달용|각|씩)", " ", s)
+    toks = [t for t in s.split() if t]
+    cut = next((i for i, t in enumerate(toks) if i >= 1 and _is_flavor_tok(t)), None)
+    if cut is not None: toks = toks[:cut]           # 첫 맛 토큰부터 절단 → 라인명만
+    while toks and _base(toks[-1]) in CATEGORY_TAIL: toks.pop()   # 끝쪽 카테고리 서술어 제거
+    return re.sub(r"\s+", " ", " ".join(toks)).strip()
 
 def line_key(cname):
-    s = cname
-    for f in FLAVORS:
-        s = s.replace(f, " ")
-    return re.sub(r"\s+", " ", s).strip()
+    return re.sub(r"\s+", "", cname).lower()
 
 def flavors_in(name):
-    hits = [f for f in FLAVORS if f in name]
-    # 상위 매칭 우선(초코바나나가 초코보다 먼저)
-    dedup = []
-    for f in hits:
-        if not any(f in d and f != d for d in dedup):
-            dedup.append(f)
-    return dedup
+    out = []
+    for tok in re.split(r"[\s,]+", name):
+        b = _base(tok)
+        if b in FSET and b not in out: out.append(b)
+    return out
 
 def load(pattern):
     rows = []

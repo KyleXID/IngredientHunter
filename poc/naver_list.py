@@ -1,14 +1,12 @@
 #!/usr/bin/env python3
-"""네이버 쇼핑 검색 오픈API로 카테고리별 top-N 제품 리스트를 수집·정규화한다.
-쿠팡 2페이지가 로그인 벽이라, 무인증으로 100개를 뽑는 리스트 소스로 네이버를 사용.
-정규화 로직(clean_name·번들·라인)은 build_sheet.py를 재사용한다.
-
-출력: poc/naver_protein.csv, poc/naver_zero.csv  (원재료/영양은 enrich_mfds.py에서 채움)
-실행: python3 poc/naver_list.py        (.env의 NAVER_ID/NAVER_SECRET 자동 로드)
-정렬: 오픈API는 판매인기순이 없어 관련도(sim)순 — 1회성 후보 리스트 용도.
+"""네이버 쇼핑 검색 오픈API로 카테고리별 '유니크 top-100' 제품 리스트를 만든다.
+  · 넉넉히 수집(최대 MAXRAW) → 정규화(build_sheet 재사용) → 비음료·번들 제외
+    → (라인+맛) 기준 중복 병합 → 관련도 상위 100개로 압축
+출력: poc/naver_protein.csv, poc/naver_zero.csv  (원재료/영양은 enrich_mfds.py)
+실행: python3 poc/naver_list.py   (.env의 NAVER_ID/NAVER_SECRET 자동 로드)
 """
 import os, sys, re, csv, json, html, time, urllib.parse, urllib.request
-from collections import Counter
+from collections import Counter, OrderedDict
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from build_sheet import clean_name, line_key, flavors_in, BUNDLE, VOL, CNT, BRAND_ALIAS
 
@@ -16,7 +14,10 @@ ROOT = "/Users/ihyeongju/Develop/Private/IngredientHunter"
 POC = os.path.join(ROOT, "poc")
 QUERIES = [("protein", "단백질음료", "naver_protein.csv"),
            ("zero",    "제로음료",   "naver_zero.csv")]
-TARGET = 100
+TARGET = 100          # 최종 유니크 개수
+MAXRAW = 400          # 중복/비음료 제거 대비 넉넉히 수집
+
+DRINK_HINT = re.compile(r"(음료|드링크|워터|라떼|밀크|탄산|콜라|사이다|스파클링|에이드|아이스티|홍차|스무디|쉐이크|마시는|우유|두유|이온)")
 
 def creds():
     cid = os.environ.get("NAVER_ID", ""); sec = os.environ.get("NAVER_SECRET", "")
@@ -29,10 +30,9 @@ def creds():
 
 CID, CSEC = creds()
 
-def search(query, need=TARGET):
-    """display=100 페이지네이션으로 need개 수집(중복 productId 제거)."""
-    out, start = {}, 1
-    while len(out) < need and start <= 1000:
+def search(query, maxraw=MAXRAW):
+    out, start = OrderedDict(), 1
+    while len(out) < maxraw and start <= 1000:
         url = "https://openapi.naver.com/v1/search/shop.json?" + urllib.parse.urlencode(
             {"query": query, "display": 100, "start": start, "sort": "sim"})
         req = urllib.request.Request(url, headers={"X-Naver-Client-Id": CID, "X-Naver-Client-Secret": CSEC})
@@ -41,13 +41,12 @@ def search(query, need=TARGET):
         if not items: break
         for it in items:
             pid = it.get("productId") or it.get("link")
-            if pid not in out:
-                out[pid] = it
+            out.setdefault(pid, it)
         start += 100
         time.sleep(0.2)
-    return list(out.values())[:need]
+    return list(out.values())
 
-def normalize(category, it):
+def normalize(it):
     title = html.unescape(re.sub(r"</?b>", "", it.get("title", ""))).strip()
     cname = clean_name(title)
     brand = it.get("brand") or it.get("maker") or (cname.split()[0] if cname else "")
@@ -55,48 +54,51 @@ def normalize(category, it):
     fl = flavors_in(title)
     is_bundle = bool(BUNDLE.search(title)) or len(fl) >= 3
     vol = VOL.search(title); cnt = CNT.search(title)
+    volume = (vol.group(1) + vol.group(2).lower()) if vol else ""
     return {
-        "product_id": it.get("productId", ""),
-        "brand": brand,
-        "clean_name": cname,
+        "product_id": it.get("productId", ""), "brand": brand, "clean_name": cname,
         "flavor": "여러맛" if is_bundle else (fl[0] if fl else ""),
-        "volume": (vol.group(1) + vol.group(2).lower()) if vol else "",
-        "pack_count": cnt.group(1) if cnt else "",
-        "price": it.get("lprice", ""),
-        "is_bundle": "Y" if is_bundle else "",
-        "product_line": line_key(cname),
-        "full_name": title,
-        "maker": it.get("maker", ""),
-        "mall": it.get("mallName", ""),
+        "volume": volume, "pack_count": cnt.group(1) if cnt else "", "price": it.get("lprice", ""),
+        "is_bundle": "Y" if is_bundle else "", "product_line": line_key(cname),
+        "full_name": title, "maker": it.get("maker", ""), "mall": it.get("mallName", ""),
         "category": " > ".join(x for x in [it.get("category3", ""), it.get("category4", "")] if x),
-        "naver_link": it.get("link", ""),
-        "ingredients_json": "",
-        "nutrition_json": "",
-        "source": "naver_shop",
+        "naver_link": it.get("link", ""), "ingredients_json": "", "nutrition_json": "", "source": "naver_shop",
     }
+
+def is_drink(r):
+    return bool(DRINK_HINT.search(r["full_name"])) or r["volume"].endswith("l")
 
 def build(category, query, out_name):
     raw = search(query)
-    items = [normalize(category, it) for it in raw]
-    gc = Counter(i["product_line"] for i in items)
-    for i in items:
-        i["dup_group_size"] = gc[i["product_line"]]
-    cols = ["product_id","brand","clean_name","flavor","volume","pack_count","price","is_bundle",
-            "product_line","dup_group_size","full_name","maker","mall","category","naver_link",
+    norm = [normalize(it) for it in raw]
+    drinks = [r for r in norm if is_drink(r)]
+    singles = [r for r in drinks if not r["is_bundle"] and r["clean_name"]]
+    # (라인+맛) 중복 병합 — 관련도 순서 유지, 첫 등장만 채택, 병합 수 기록
+    uniq = OrderedDict()
+    for r in singles:
+        key = (r["product_line"], r["flavor"])
+        if key in uniq:
+            uniq[key]["dup_count"] += 1
+        else:
+            r["dup_count"] = 1
+            uniq[key] = r
+    items = list(uniq.values())[:TARGET]
+    cols = ["product_id","brand","clean_name","flavor","volume","pack_count","price","dup_count",
+            "product_line","full_name","maker","mall","category","naver_link",
             "ingredients_json","nutrition_json","source"]
     out = os.path.join(POC, out_name)
     with open(out, "w", encoding="utf-8-sig", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=cols); w.writeheader(); w.writerows(items)
-    bundles = sum(1 for i in items if i["is_bundle"])
-    print(f"[{category}] '{query}' → {len(items)}개 · 번들 {bundles} · 단일 {len(items)-bundles} → {out_name}")
+        w = csv.DictWriter(f, fieldnames=cols, extrasaction="ignore"); w.writeheader(); w.writerows(items)
+    print(f"[{category}] 수집 {len(raw)} → 음료 {len(drinks)} → 단일 {len(singles)} "
+          f"→ 유니크 {len(uniq)} → top {len(items)} · {out_name}")
     return items
 
 if __name__ == "__main__":
     if not (CID and CSEC):
         print("NAVER_ID/NAVER_SECRET 없음(.env 또는 환경변수)."); sys.exit(1)
-    results = {}
+    res = {}
     for cat, q, out in QUERIES:
-        results[cat] = build(cat, q, out)
-    print("\n--- 단일제품 샘플(protein 상위 6) ---")
-    for i in [x for x in results.get("protein", []) if not x["is_bundle"]][:6]:
-        print(f"  {i['brand']:10} | {i['clean_name'][:30]:30} | {i['flavor']:5} | {i['volume']:6} | {i['price']}원")
+        res[cat] = build(cat, q, out)
+    print("\n--- protein 유니크 상위 8 ---")
+    for i in res["protein"][:8]:
+        print(f"  {i['brand']:10} | {i['clean_name'][:26]:26} | {i['flavor']:5} | {i['volume']:6} | 병합{i['dup_count']}")
