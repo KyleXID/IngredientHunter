@@ -29,6 +29,8 @@ def load_key():
     return ""
 
 KEY = load_key()
+LIMIT = int(os.environ.get("ENRICH_LIMIT", "0"))   # >0 이면 시트당 상위 N개만(샘플, 별도 .sample.csv)
+DELAY = float(os.environ.get("ENRICH_DELAY", "0.3"))  # 제품 간 딜레이(초) — throttle 방지
 
 def api(pairs, start=1, end=20, retries=2):
     cond = "/".join(f"{k}={urllib.parse.quote(str(v))}" for k, v in pairs.items())
@@ -98,10 +100,9 @@ def demo():
 def enrich_sheet(name):
     path = os.path.join(POC, name)
     rows = list(csv.DictReader(open(path, encoding="utf-8-sig")))
+    work = rows[:LIMIT] if LIMIT else rows
     ok = 0
-    for r in rows:
-        if r.get("is_bundle"):  # 번들은 단일제품 아님 → 매칭 건너뜀
-            continue
+    for r in work:
         row, score = match(r["clean_name"], r.get("brand", ""))
         r.setdefault("mfds_matched_name", ""); r.setdefault("mfds_report_no", ""); r.setdefault("match_score", "")
         if row:
@@ -111,15 +112,19 @@ def enrich_sheet(name):
             r["mfds_report_no"] = row.get("PRDLST_REPORT_NO", "")
             r["match_score"] = score
             ok += 1
+            print(f"  ✓ {r['clean_name']} → {row.get('PRDLST_NM','')} · 원재료 {len(ings)}", flush=True)
         else:
             r["match_score"] = score
+            print(f"  - {r['clean_name']} → 매칭 실패(비전 판독 폴백)", flush=True)
+        time.sleep(DELAY)
     cols = list(rows[0].keys())
     for extra in ("mfds_matched_name", "mfds_report_no", "match_score"):
         if extra not in cols: cols.append(extra)
-    with open(path, "w", encoding="utf-8-sig", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=cols); w.writeheader(); w.writerows(rows)
-    singles = sum(1 for r in rows if not r.get("is_bundle"))
-    print(f"[{name}] 단일제품 {singles}개 중 원재료 매칭 {ok}개 ({ok*100//max(singles,1)}%)")
+    out = path.replace(".csv", ".sample.csv") if LIMIT else path
+    to_write = work if LIMIT else rows
+    with open(out, "w", encoding="utf-8-sig", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=cols, extrasaction="ignore"); w.writeheader(); w.writerows(to_write)
+    print(f"[{name}] {len(work)}개 중 매칭 {ok}개 ({ok*100//max(len(work),1)}%) → {os.path.basename(out)}", flush=True)
 
 if __name__ == "__main__":
     if "--demo" in sys.argv or not KEY:
