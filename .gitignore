@@ -18,6 +18,9 @@ frontend/.vite/
 __pycache__/
 *.pyc
 
+# --- playwright / scratch ---
+.playwright-mcp/
+
 # --- os / editor ---
 .DS_Store
 .idea/

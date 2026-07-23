@@ -15,7 +15,7 @@ from difflib import SequenceMatcher
 
 ROOT = "/Users/ihyeongju/Develop/Private/IngredientHunter"
 POC = os.path.join(ROOT, "poc")
-SHEETS = ["coupang_protein.csv", "coupang_zero.csv"]
+SHEETS = ["naver_protein.csv", "naver_zero.csv"]
 BASE = "http://openapi.foodsafetykorea.go.kr/api"
 
 def load_key():
