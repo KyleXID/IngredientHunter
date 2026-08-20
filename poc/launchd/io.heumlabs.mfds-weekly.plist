@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  주 1회 새벽 식약처 전량 수집(weekly_collect.sh) 스케줄러 (macOS launchd).
+  식약처 API 호출 가능 시간(19:00~09:00) 안인 '매주 수요일 03:00'에 실행.
+
+  설치:
+    cp poc/launchd/io.heumlabs.mfds-weekly.plist ~/Library/LaunchAgents/
+    launchctl load ~/Library/LaunchAgents/io.heumlabs.mfds-weekly.plist
+  해제:
+    launchctl unload ~/Library/LaunchAgents/io.heumlabs.mfds-weekly.plist
+  즉시 1회 실행(테스트):
+    launchctl start io.heumlabs.mfds-weekly
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>io.heumlabs.mfds-weekly</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/Users/ihyeongju/Develop/Private/IngredientHunter/poc/weekly_collect.sh</string>
+  </array>
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Weekday</key><integer>3</integer>
+    <key>Hour</key><integer>3</integer>
+    <key>Minute</key><integer>0</integer>
+  </dict>
+  <key>StandardOutPath</key>
+  <string>/Users/ihyeongju/Develop/Private/IngredientHunter/poc/logs/launchd.out</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/ihyeongju/Develop/Private/IngredientHunter/poc/logs/launchd.err</string>
+</dict>
+</plist>
