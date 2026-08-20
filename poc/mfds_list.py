@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """식약처 C002 품목제조보고에서 '단백질'/'제로' 키워드 전체 상품을 뽑아 식약처 원본 컬럼 CSV로 만든다.
   · 음료 제한 없음 — 키워드가 품목명에 든 전체 품목(분말·바·과자 등 포함).
-  · 중복 병합: 같은 (품목명, 업소명) 재등록을 1행으로 합치고 dup_count 기록.
-  · 컬럼은 식약처 C002 원본 필드 기준(네이버쇼핑용 정규화 컬럼 없음).
+  · report_no(품목보고번호) 단위 — 같은 report_no만 제거. (품목명,업소명) 병합은 저장이 아니라 조회 레이어(product_merged 뷰)에서.
+  · 컬럼은 식약처 C002 원본 필드 기준(chng_dt=변경일 포함).
 출력: poc/mfds_protein.csv, poc/mfds_zero.csv
 실행: python3 poc/mfds_list.py [protein|zero]   (.env의 MFDS_KEY, 식약처 09~19시 제한 밖에 실행)
       MFDS_TARGET=100 python3 poc/mfds_list.py   (카테고리당 상한, 0=전량 기본)
-      python3 poc/mfds_list.py --selftest         (API 없이 병합·파싱 로직 검증)
+      python3 poc/mfds_list.py --selftest         (API 없이 파싱·중복제거 로직 검증)
 """
 import os, sys, re, csv, json, time, urllib.parse, urllib.request
 from collections import OrderedDict
@@ -20,9 +20,9 @@ DELAY = float(os.environ.get("MFDS_DELAY", "0.3"))     # 호출 간 딜레이(th
 
 CATS = {"protein": ["단백질", "프로틴"], "zero": ["제로", "무설탕", "무가당"]}
 OUT = {"protein": "mfds_protein.csv", "zero": "mfds_zero.csv"}
-# 식약처 C002 원본 필드 기준 컬럼 (+ category=검색 버킷, dup_count=중복병합 수)
-COLS = ["report_no", "name", "maker", "prdlst_type", "report_date",
-        "category", "ingredient_count", "ingredients_json", "dup_count"]
+# 식약처 C002 원본 필드 기준 컬럼 (report_no 단위, 병합/카운트 없음)
+COLS = ["report_no", "name", "maker", "prdlst_type", "report_date", "chng_dt",
+        "category", "ingredient_count", "ingredients_json"]
 
 
 def load_key():
@@ -61,12 +61,6 @@ def fmt_date(s):
     """식약처 YYYYMMDD → YYYY-MM-DD."""
     s = (s or "").strip()
     return f"{s[:4]}-{s[4:6]}-{s[6:8]}" if len(s) == 8 and s.isdigit() else s
-
-
-def dedup_key(name, maker):
-    """중복 병합 키: 정규화 품목명 + 업소명(같은 제품 재등록을 합침)."""
-    n = re.sub(r"\s+", "", re.sub(r"[^0-9a-z가-힣]", " ", (name or "").lower()))
-    return (n, (maker or "").strip())
 
 
 def api(query, start, end, retries=2):
@@ -113,6 +107,7 @@ def normalize_row(r, category):
         "maker": (r.get("BSSH_NM") or "").strip(),
         "prdlst_type": r.get("PRDLST_DCNM", ""),
         "report_date": fmt_date(r.get("PRMS_DT", "")),
+        "chng_dt": fmt_date(r.get("CHNG_DT", "")),      # 변경일 — DB 변경 감지용
         "category": category,
         "ingredient_count": len(ings),
         "ingredients_json": json.dumps(ings, ensure_ascii=False) if ings else "",
@@ -120,18 +115,14 @@ def normalize_row(r, category):
 
 
 def process(raw, category):
-    """카테고리(키워드) 전체 상품 → (품목명,업소명) 중복 병합. 순수함수(테스트 대상)."""
+    """카테고리(키워드) 전체 상품 → report_no 단위(같은 report_no만 제거). 순수함수(테스트 대상).
+    (품목명,업소명) 병합은 저장이 아니라 조회 레이어(product_merged 뷰)에서 함."""
     uniq = OrderedDict()
     for row in raw:
         r = normalize_row(row, category)
-        if not r["name"]:
+        if not r["name"] or not r["report_no"]:
             continue
-        k = dedup_key(r["name"], r["maker"])
-        if k in uniq:
-            uniq[k]["dup_count"] += 1
-        else:
-            r["dup_count"] = 1
-            uniq[k] = r
+        uniq.setdefault(r["report_no"], r)
     items = list(uniq.values())
     return items[:TARGET] if TARGET > 0 else items
 
@@ -157,19 +148,18 @@ def run(cats=None):
 def selftest():
     sample = [
         {"PRDLST_NM": "동원 제로 콜라", "BSSH_NM": "동원", "PRDLST_REPORT_NO": "1", "PRDLST_DCNM": "탄산음료",
-         "PRMS_DT": "20240101", "RAWMTRL_NM": "정제수,감미료(수크랄로스,아세설팜칼륨)"},
-        {"PRDLST_NM": "동원  제로콜라", "BSSH_NM": "동원", "PRDLST_REPORT_NO": "2", "PRDLST_DCNM": "탄산음료",
-         "PRMS_DT": "20240102", "RAWMTRL_NM": "정제수"},                                  # 같은 품목명+업소 → 병합
+         "PRMS_DT": "20240101", "CHNG_DT": "20240301", "RAWMTRL_NM": "정제수,감미료(수크랄로스,아세설팜칼륨)"},
+        {"PRDLST_NM": "동원 제로 콜라(재조회)", "BSSH_NM": "동원", "PRDLST_REPORT_NO": "1", "PRDLST_DCNM": "탄산음료",
+         "PRMS_DT": "20240101", "RAWMTRL_NM": "정제수"},                                  # 같은 report_no → 하나로
         {"PRDLST_NM": "제로 초코쿠키", "BSSH_NM": "롯데", "PRDLST_REPORT_NO": "3", "PRDLST_DCNM": "과자류",
          "PRMS_DT": "20230505", "RAWMTRL_NM": "밀가루,코코아"},                            # 음료 아님도 포함(전체 상품)
     ]
     out = process(sample, "zero")
-    assert len(out) == 2, f"콜라(병합)+쿠키 = 2 기대, got {len(out)}"
-    cola = next(r for r in out if "콜라" in r["name"])
-    assert cola["dup_count"] == 2, cola["dup_count"]
+    assert len(out) == 2, f"report_no 1·3 = 2 기대, got {len(out)}"
+    cola = next(r for r in out if r["report_no"] == "1")
     assert cola["ingredient_count"] == 2, "정제수 + 감미료(...) = 2"
-    assert cola["report_date"] == "2024-01-01", cola["report_date"]
-    cookie = next(r for r in out if "쿠키" in r["name"])
+    assert cola["report_date"] == "2024-01-01" and cola["chng_dt"] == "2024-03-01", (cola["report_date"], cola["chng_dt"])
+    cookie = next(r for r in out if r["report_no"] == "3")
     assert cookie["ingredient_count"] == 2 and cookie["prdlst_type"] == "과자류", "음료 제한 없이 과자도 포함"
     print("selftest OK")
 
