@@ -107,6 +107,25 @@ class ProductController(private val repo: ProductRepository, private val jdbc: J
         args.add(limit.coerceIn(1, 200)); args.add(offset.coerceAtLeast(0))
         return jdbc.queryForList(sql.toString(), *args.toTypedArray())
     }
+
+    /**
+     * 검색 자동완성 — 띄어쓰기 무시 매칭 + 이름(공백무시) 중복 제거(이름당 대표 1건=최근 등록).
+     * report_no 단위 미러라 동일 제품이 여러 건이므로 서버에서 정리해 내려준다.
+     */
+    @GetMapping("/search")
+    fun search(
+        @RequestParam(required = false) q: String?,
+        @RequestParam(defaultValue = "8") limit: Int,
+    ): List<Map<String, Any?>> {
+        val norm = q?.replace(Regex("\\s"), "")?.lowercase()?.takeIf { it.isNotBlank() } ?: return emptyList()
+        val sql =
+            "select distinct on (regexp_replace(lower(name), '\\s', '', 'g')) " +
+                "report_no as \"reportNo\", name, maker " +
+                "from product where active and regexp_replace(lower(name), '\\s', '', 'g') like ? " +
+                "order by regexp_replace(lower(name), '\\s', '', 'g'), report_date desc nulls last " +
+                "limit ?"
+        return jdbc.queryForList(sql, "%$norm%", limit.coerceIn(1, 30))
+    }
 }
 
 // ── 4. 동기화: 시작 시 seed CSV 를 upsert(변경 반영) + soft-delete(폐지 비활성) ──

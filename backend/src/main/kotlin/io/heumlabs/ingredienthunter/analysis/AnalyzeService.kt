@@ -61,9 +61,15 @@ class AnalyzeService(
         req.productReportNo?.let { rno ->
             val p = productRepo.findById(rno).orElse(null)
             if (p != null) {
-                val names = runCatching { json.readValue(p.ingredientsJson ?: "[]", List::class.java) }
-                    .getOrDefault(emptyList<Any>())
-                    .filterIsInstance<String>()
+                // union: 같은 이름(공백무시)의 모든 활성 제품 원재료 합집합 — 등록·공장별 변형 누락 방지
+                val jsons = jdbc.queryForList(
+                    "select ingredients_json from product where active and " +
+                        "regexp_replace(lower(name), '\\s', '', 'g') = regexp_replace(lower(?), '\\s', '', 'g')",
+                    String::class.java, p.name,
+                )
+                val names = jsons.filterNotNull().flatMap { js ->
+                    runCatching { json.readValue(js, List::class.java) }.getOrDefault(emptyList<Any>()).filterIsInstance<String>()
+                }.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
                 return p.name to names
             }
         }
