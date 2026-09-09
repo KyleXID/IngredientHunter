@@ -4,7 +4,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { C, F, S, TXT, R, L, VERDICT } from './theme'
 import {
   Screen, Body, PageTitle, SectionLabel, Button, Collapse, TextLink, Card, Notice,
-  VerdictBadge, CheckBox, ConsentRow, HowItWorksModal, ConsentModal, ShareModal, summarize,
+  VerdictBadge, CheckBox, ConsentRow, HowItWorksModal, HealthConsentModal, LogConsentModal, ShareModal, summarize,
   rowDivider, ROW_TEXT_INSET,
   IconSearch, IconCamera, IconImage, IconArrowRight, IconChevronLeft, IconCheck,
   IconWarning, IconDanger, IconInfo, IconRefresh, IconShare, IconClose,
@@ -51,8 +51,8 @@ export function IntroScreen() {
       // 설문 완료 상태 → 저장된 건강정보로 바로 분석(설문 재노출 안 함). 수정은 "건강 정보 수정"에서.
       setPending({
         productReportNo: reportNo, productName: name,
-        conditions: s.conditions, consent: s.agreed,
-        healthConsent: s.agreed && s.conditions.length > 0, cookieId: getCookieId(),
+        conditions: s.conditions, consent: s.agreeLog,
+        healthConsent: s.agreeHealth && s.conditions.length > 0, cookieId: getCookieId(),
       })
       nav('/loading')
     } else {
@@ -179,34 +179,39 @@ export function SurveyScreen() {
   const { source, setPending } = useFlow()
   const [groups, setGroups] = useState<ConditionGroup[]>([])
   const [selected, setSelected] = useState<Set<string>>(() => new Set(loadSurvey().conditions))
-  const [agreed, setAgreed] = useState<boolean>(() => loadSurvey().agreed)
-  const [showConsent, setShowConsent] = useState(false)
+  const [agreeHealth, setAgreeHealth] = useState<boolean>(() => loadSurvey().agreeHealth)  // 필수(건강상태 선택 시)
+  const [agreeLog, setAgreeLog] = useState<boolean>(() => loadSurvey().agreeLog)            // 선택
+  const [showHealth, setShowHealth] = useState(false)
+  const [showLog, setShowLog] = useState(false)
 
   useEffect(() => { getHealthSurvey().then(setGroups).catch(() => setGroups([])) }, [])
   // 설문 선택·동의를 로컬에 저장 → 다시 들어와도 유지(completed 플래그는 보존)
   useEffect(() => {
-    saveSurvey({ conditions: Array.from(selected), agreed, completed: loadSurvey().completed })
-  }, [selected, agreed])
+    saveSurvey({ conditions: Array.from(selected), agreeHealth, agreeLog, completed: loadSurvey().completed })
+  }, [selected, agreeHealth, agreeLog])
 
   const toggle = (id: string) => {
     const next = new Set(selected)
     if (next.has(id)) next.delete(id); else next.add(id)
+    if (next.size === 0) setAgreeHealth(false)   // 건강상태를 모두 해제하면 건강 동의도 되돌림
     setSelected(next)
   }
 
+  // 건강 정보 동의는 건강상태를 골랐을 때만 필요하고 그땐 필수. 사용 기록 동의는 선택(버튼 안 막음).
   const picked = selected.size > 0
-  const consentLabel = picked ? '건강 정보·사용 기록 분석에 동의해요' : '사용 기록 분석에 동의해요'
-  // 법령: 동의는 선택. 미동의여도 분석은 진행(로그만 미적재).
-  const ctaLabel = edit ? '저장' : picked ? `${selected.size}개 선택 · 분석 시작` : '분석하기'
+  const canProceed = !picked || agreeHealth
+  const ctaLabel = !canProceed
+    ? '건강 정보 활용 동의에 체크해 주세요'
+    : edit ? '저장' : picked ? `${selected.size}개 선택 · 분석 시작` : '분석하기'
 
   const submit = () => {
-    saveSurvey({ conditions: Array.from(selected), agreed, completed: true })
+    saveSurvey({ conditions: Array.from(selected), agreeHealth, agreeLog, completed: true })
     if (edit) { nav('/'); return }   // 편집 모드: 저장만 하고 홈으로
     setPending({
       ...source,
       conditions: Array.from(selected),
-      consent: agreed,
-      healthConsent: agreed && picked,
+      consent: agreeLog,                       // 사용 기록(로그) 동의 = 선택
+      healthConsent: agreeHealth && picked,    // 건강 정보(민감정보) 동의 = 필수
       cookieId: getCookieId(),
     })
     nav('/loading')
@@ -214,14 +219,22 @@ export function SurveyScreen() {
 
   return (
     <>
-      {showConsent && <ConsentModal onClose={() => setShowConsent(false)} />}
+      {showHealth && <HealthConsentModal onClose={() => setShowHealth(false)} />}
+      {showLog && <LogConsentModal onClose={() => setShowLog(false)} />}
       <Screen
         footer={
           <>
-            <div style={{ marginBottom: S.lg, padding: '0 2px' }}>
-              <ConsentRow on={agreed} onToggle={() => setAgreed((v) => !v)} onDetail={() => setShowConsent(true)}>{consentLabel}</ConsentRow>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: S.md, marginBottom: S.lg, padding: '0 2px' }}>
+              {picked && (
+                <ConsentRow required on={agreeHealth} onToggle={() => setAgreeHealth((v) => !v)} onDetail={() => setShowHealth(true)}>
+                  건강 정보 활용에 동의해요
+                </ConsentRow>
+              )}
+              <ConsentRow on={agreeLog} onToggle={() => setAgreeLog((v) => !v)} onDetail={() => setShowLog(true)}>
+                사용 기록 활용에 동의해요
+              </ConsentRow>
             </div>
-            <Button onClick={submit}>{ctaLabel}</Button>
+            <Button disabled={!canProceed} onClick={submit}>{ctaLabel}</Button>
             <TextLink onClick={() => nav(-1)} iconLeft={<IconChevronLeft size={16} color={C.gray400} />}>뒤로가기</TextLink>
           </>
         }
@@ -270,8 +283,8 @@ export function PhotoGuideScreen() {
       if (s.completed) {
         setPending({
           imageBase64: base64, mediaType: media,
-          conditions: s.conditions, consent: s.agreed,
-          healthConsent: s.agreed && s.conditions.length > 0, cookieId: getCookieId(),
+          conditions: s.conditions, consent: s.agreeLog,
+          healthConsent: s.agreeHealth && s.conditions.length > 0, cookieId: getCookieId(),
         })
         nav('/loading')
       } else {

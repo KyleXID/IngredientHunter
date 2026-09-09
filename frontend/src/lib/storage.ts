@@ -4,7 +4,7 @@ const SURVEY_KEY = 'zerodrink_survey'
 const HISTORY_KEY = 'zerodrink_history'
 const HISTORY_MAX = 8
 
-export interface SavedSurvey { conditions: string[]; agreed: boolean; completed: boolean }
+export interface SavedSurvey { conditions: string[]; agreeHealth: boolean; agreeLog: boolean; completed: boolean }
 export interface HistoryItem { reportNo: string; name: string }
 
 function read<T>(key: string, fallback: T): T {
@@ -20,7 +20,7 @@ function write(key: string, value: unknown) {
 }
 
 export function loadSurvey(): SavedSurvey {
-  return read<SavedSurvey>(SURVEY_KEY, { conditions: [], agreed: false, completed: false })
+  return read<SavedSurvey>(SURVEY_KEY, { conditions: [], agreeHealth: false, agreeLog: false, completed: false })
 }
 export function saveSurvey(s: SavedSurvey) {
   write(SURVEY_KEY, s)

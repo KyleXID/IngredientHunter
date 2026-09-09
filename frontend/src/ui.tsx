@@ -178,13 +178,18 @@ export function Notice({ children, plain = false }: { children: ReactNode; plain
   )
 }
 
-export function VerdictBadge({ verdict }: { verdict: VerdictKey }) {
-  const v = VERDICT[verdict]
+/** 알약 배지 — 판정 배지·동의(필수/선택) 배지가 같은 규격. compact는 여백만 축소. */
+export function Pill({ children, bg, fg, compact = false }: { children: ReactNode; bg: string; fg: string; compact?: boolean }) {
   return (
-    <span className="shrink-0" style={{ padding: `${S.xs}px ${S.md}px`, borderRadius: R.chip, backgroundColor: v.surface, color: v.toneText, fontFamily: F.md, fontWeight: 500, fontSize: 12, letterSpacing: '-0.02em' }}>
-      {v.badge}
+    <span className="shrink-0" style={{ padding: compact ? `2px ${S.sm}px` : `${S.xs}px ${S.md}px`, borderRadius: R.chip, backgroundColor: bg, color: fg, fontFamily: F.md, fontWeight: 500, fontSize: 12, letterSpacing: '-0.02em' }}>
+      {children}
     </span>
   )
+}
+
+export function VerdictBadge({ verdict }: { verdict: VerdictKey }) {
+  const v = VERDICT[verdict]
+  return <Pill bg={v.surface} fg={v.toneText}>{v.badge}</Pill>
 }
 
 export function Sheet({ title, onClose, children, footer }: { title: string; onClose: () => void; children: ReactNode; footer?: ReactNode }) {
@@ -210,12 +215,14 @@ export function CheckBox({ on, size = 22 }: { on: boolean; size?: number }) {
   )
 }
 
-export function ConsentRow({ on, onToggle, children, onDetail }: { on: boolean; onToggle: () => void; children: ReactNode; onDetail?: () => void }) {
+/** 동의 한 줄 — 체크박스 + 필수/선택 배지 + 문구 + 자세히 보기 */
+export function ConsentRow({ on, onToggle, children, onDetail, required = false }: { on: boolean; onToggle: () => void; children: ReactNode; onDetail?: () => void; required?: boolean }) {
   return (
-    <div className="flex items-center" style={{ gap: S.md }}>
-      <button onClick={onToggle} className="flex items-center flex-1 min-w-0 text-left" style={{ gap: S.md }}>
+    <div className="flex items-center" style={{ gap: S.sm }}>
+      <button onClick={onToggle} className="flex items-center flex-1 min-w-0 text-left" style={{ gap: S.sm }}>
         <CheckBox on={on} size={22} />
-        <span style={TXT.label}>{children}</span>
+        <Pill compact bg={required ? C.blueSurface : C.gray50} fg={required ? C.blue : C.gray500}>{required ? '필수' : '선택'}</Pill>
+        <span className="whitespace-nowrap" style={TXT.label}>{children}</span>
       </button>
       {onDetail && (
         <button onClick={onDetail} className="shrink-0 flex items-center transition-opacity active:opacity-60" style={{ gap: S.xs, ...TXT.caption, color: C.gray400 }}>
@@ -270,28 +277,55 @@ export function HowItWorksModal({ onClose }: { onClose: () => void }) {
   )
 }
 
-export function ConsentModal({ onClose }: { onClose: () => void }) {
-  const items = [
-    { title: '무엇을 받나요', desc: '기기를 구분하는 쿠키와 함께 서비스를 어떻게 사용하는지 남겨요. 건강 상태를 골랐다면 그 항목도 같이 받아요.' },
-    { title: '어디에 쓰나요', desc: '서비스를 어떻게 사용하는지 살펴 개선하는 데 써요. 건강 상태를 골랐다면 그 상태에 맞춰 성분 위험도를 분석하는 데도 써요. 광고에는 쓰지 않아요.' },
-    { title: '언제까지 갖고 있나요', desc: '남긴 기록은 6개월 동안 보관하고, 그 뒤에 지워요.' },
-    { title: '쿠키를 쓰나요', desc: '로그인 없이 기기를 구분하려고 쿠키를 써요. 이름이나 연락처는 받지 않고, 쿠키는 브라우저에서 언제든 지울 수 있어요.' },
-    { title: '동의하지 않으면요', desc: '동의하지 않아도 분석은 할 수 있어요. 다만 사용 기록을 남기지 않아 서비스 개선에는 반영되지 않아요.' },
-  ]
+/** 동의 상세 모달 공통 껍데기 — 항목 목록 + 하단 고지 */
+function ConsentSheet({ title, items, notice, onClose }: { title: string; items: { title: string; desc: string }[]; notice: string; onClose: () => void }) {
   return (
-    <Sheet title="정보를 이렇게 써요" onClose={onClose}>
+    <Sheet title={title} onClose={onClose}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: S.xl }}>
-        {items.map((s) => (
-          <div key={s.title}>
-            <p style={{ ...TXT.strong, marginBottom: S.xs }}>{s.title}</p>
-            <p style={TXT.body}>{s.desc}</p>
+        {items.map((it) => (
+          <div key={it.title}>
+            <p style={{ ...TXT.strong, marginBottom: S.xs }}>{it.title}</p>
+            <p style={TXT.body}>{it.desc}</p>
           </div>
         ))}
       </div>
-      <div style={{ marginTop: S.xxl }}>
-        <Notice>건강 상태를 골랐다면 민감정보에 해당해, 「개인정보 보호법」 제23조에 따라 따로 동의를 받고 있어요. 받은 정보는 위에 적은 목적 밖으로 쓰거나 다른 곳에 넘기지 않아요.</Notice>
-      </div>
+      <div style={{ marginTop: S.xxl }}><Notice>{notice}</Notice></div>
     </Sheet>
+  )
+}
+
+/** 건강 정보 활용 동의 상세 (필수) */
+export function HealthConsentModal({ onClose }: { onClose: () => void }) {
+  return (
+    <ConsentSheet
+      title="건강 정보를 이렇게 써요"
+      onClose={onClose}
+      items={[
+        { title: '무엇을 받나요', desc: '직접 고른 건강 상태예요. 당뇨병, 고혈압, 임신 여부 같은 항목이에요.' },
+        { title: '어디에 쓰나요', desc: '고른 상태에 맞춰 성분 위험도를 판단하고, 더 정확한 결과를 보여드리는 데 써요.' },
+        { title: '언제까지 갖고 있나요', desc: '결과를 보여드리면 바로 지워요. 사용 기록 활용에도 동의했다면, 그 기록에 남는 부분은 6개월 보관해요.' },
+        { title: '동의하지 않으면요', desc: '건강 상태에 맞춘 결과를 만들 수 없어요. 건강 상태를 고르지 않으면 이 동의 없이도 분석할 수 있어요.' },
+      ]}
+      notice="건강 상태는 민감정보라서 「개인정보 보호법」 제23조에 따라 따로 동의를 받고 있어요. 받은 정보는 위에 적은 목적 밖으로 쓰거나 다른 곳에 넘기지 않아요."
+    />
+  )
+}
+
+/** 사용 기록 활용 동의 상세 (선택) */
+export function LogConsentModal({ onClose }: { onClose: () => void }) {
+  return (
+    <ConsentSheet
+      title="사용 기록을 이렇게 써요"
+      onClose={onClose}
+      items={[
+        { title: '무엇을 남기나요', desc: '기기를 구분하는 쿠키와 함께 서비스를 어떻게 사용하는지 남겨요. 건강 상태를 골랐다면 그 항목도 함께 남아요.' },
+        { title: '개인을 알아볼 수 있나요', desc: '누구인지 알아볼 수 없는 형태로만 저장해요. 이름이나 연락처는 받지 않아요.' },
+        { title: '어디에 쓰나요', desc: '서비스를 어떻게 사용하는지 살펴 개선하는 데 써요. 광고에는 쓰지 않아요.' },
+        { title: '언제까지 갖고 있나요', desc: '남긴 기록은 6개월 동안 보관하고, 그 뒤에 지워요.' },
+        { title: '동의하지 않으면요', desc: '동의하지 않아도 분석 결과는 그대로 볼 수 있어요. 다만 기록이 남지 않아 서비스 개선에는 반영되지 않아요.' },
+      ]}
+      notice="쿠키는 로그인 없이 기기를 구분하려고 써요. 브라우저에서 언제든 지울 수 있어요."
+    />
   )
 }
 
