@@ -1,7 +1,12 @@
 package io.heumlabs.ingredienthunter.analysis
 
+import io.heumlabs.ingredienthunter.catalog.ProductRepository
+import io.heumlabs.ingredienthunter.knowledge.Ingredient
+import io.heumlabs.ingredienthunter.knowledge.IngredientRepository
+import io.heumlabs.ingredienthunter.knowledge.IngredientRuleRepository
+import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
-import org.springframework.core.io.ClassPathResource
+import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.stereotype.Service
 import tools.jackson.databind.json.JsonMapper
 import java.net.URI
@@ -10,42 +15,163 @@ import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 
 /**
- * 성분표 이미지 → 비전 LLM으로 원재료 추출 → 리스크 KB(리포트 MD) 근거로 평가.
- * 우선순위: GEMINI_API_KEY(연습용 무료) > ANTHROPIC_API_KEY > DEMO(키 없을 때 UI/계약 확인).
- * MVP는 "비전 LLM 한 방" — 전용 OCR 파이프라인 없음(CLAUDE.md).
+ * 성분표 이미지/제품 → 원재료 추출 → 성분 리스크 DB(ingredient_rule) 근거로 판정.
+ *   · LLM(Gemini>Claude)은 "원재료명 추출"만. 판정·개인화·verdict·noDietEffect 는 DB 로직.
+ *   · 검색 경로(productReportNo)는 LLM 없이 product.ingredients_json 사용.
+ * 응답 계약 = 프론트 결과 화면과 1:1(verdict/productName/totalDetected/noDietEffect/note/ingredients).
  */
 @Service
 class AnalyzeService(
+    private val ingredientRepo: IngredientRepository,
+    private val ruleRepo: IngredientRuleRepository,
+    private val productRepo: ProductRepository,
+    private val jdbc: JdbcTemplate,
     @Value("\${gemini.api-key:}") private val geminiKey: String,
     @Value("\${gemini.model:gemini-flash-latest}") private val geminiModel: String,
     @Value("\${anthropic.api-key:}") private val anthropicKey: String,
     @Value("\${anthropic.model:claude-sonnet-5}") private val anthropicModel: String,
 ) {
+    private val log = LoggerFactory.getLogger(javaClass)
     private val json = JsonMapper.builder().build()
     private val http = HttpClient.newHttpClient()
-    private val kb: String =
-        ClassPathResource("ingredient-risk-kb.md").inputStream.use { it.readBytes().decodeToString() }
 
-    fun analyze(imageBase64: String?, mediaType: String?): Any {
-        if (imageBase64.isNullOrBlank()) return demo()
-        val media = mediaType ?: "image/jpeg"
-        return when {
-            geminiKey.isNotBlank() -> callGemini(imageBase64, media)
-            anthropicKey.isNotBlank() -> callClaude(imageBase64, media)
-            else -> demo()
-        }
+    // 판정 위계·매핑
+    private val severity = mapOf("안전" to 0, "주의" to 1, "유해" to 2)
+    private val cardType = mapOf("주의" to "warning", "유해" to "harmful")
+    /** applies_to(성분DB 표기) → 건강설문 code. "모든 사람"은 항상 적용이라 여기 없음. */
+    private val conditionOfApplies = mapOf(
+        "당뇨병 환자" to "diabetes",
+        "유당불내증" to "lactose",
+        "갈락토스혈증 환자" to "galactose",
+    )
+
+    // ── 진입점 ──
+    fun analyze(req: AnalyzeRequest): AnalyzeResult {
+        val (productName, rawNames) = resolveIngredients(req)
+        val result = judge(productName, rawNames, req.conditions.toSet())
+        if (req.consent) writeLog(req, result)
+        return result
     }
 
-    /** Google Gemini (generateContent) — responseMimeType=application/json 으로 순수 JSON 수신. */
-    private fun callGemini(imageBase64: String, media: String): Any {
+    /** 입력 경로 3종: 직접 성분목록 > 제품(report_no) > 이미지(LLM). 키 없으면 데모. */
+    private fun resolveIngredients(req: AnalyzeRequest): Pair<String, List<String>> {
+        req.ingredientNames?.takeIf { it.isNotEmpty() }?.let {
+            return (req.productName ?: "입력 성분") to it
+        }
+        req.productReportNo?.let { rno ->
+            val p = productRepo.findById(rno).orElse(null)
+            if (p != null) {
+                // union: 같은 이름(공백무시)의 모든 활성 제품 원재료 합집합 — 등록·공장별 변형 누락 방지
+                val jsons = jdbc.queryForList(
+                    "select ingredients_json from product where active and " +
+                        "regexp_replace(lower(name), '\\s', '', 'g') = regexp_replace(lower(?), '\\s', '', 'g')",
+                    String::class.java, p.name,
+                )
+                val names = jsons.filterNotNull().flatMap { js ->
+                    runCatching { json.readValue(js, List::class.java) }.getOrDefault(emptyList<Any>()).filterIsInstance<String>()
+                }.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
+                return p.name to names
+            }
+        }
+        if (!req.imageBase64.isNullOrBlank()) {
+            return extractFromImage(req.imageBase64, req.mediaType ?: "image/jpeg")
+        }
+        return DEMO_PRODUCT to DEMO_NAMES
+    }
+
+    // ── 판정: 원재료명 → DB 룰 매칭 → 개인화 → verdict/noDietEffect ──
+    fun judge(productName: String, rawNames: List<String>, conditions: Set<String>): AnalyzeResult {
+        val ingredients = ingredientRepo.findAll()
+        val rulesByIngredient = ruleRepo.findAll().groupBy { it.ingredientId }
+
+        val matched = LinkedHashSet<Ingredient>()
+        for (raw in rawNames) {
+            val norm = raw.replace(" ", "")
+            for (ing in ingredients) if (matchTerms(ing).any { norm.contains(it) }) matched.add(ing)
+        }
+
+        val cards = ArrayList<IngredientCard>()
+        var worst = 0
+        var noDietEffect = false
+        for (ing in matched) {
+            val rules = rulesByIngredient[ing.id] ?: continue
+            // 개인화: "모든 사람" 룰은 항상 + 선택한 건강상태에 해당하는 룰
+            val applicable = rules.filter {
+                it.appliesTo == "모든 사람" || conditionOfApplies[it.appliesTo] in conditions
+            }
+            if (applicable.any { it.dietEffect == "없음" }) noDietEffect = true
+            val chosen = applicable.maxByOrNull { severity[it.effectLevel] ?: 0 } ?: continue
+            worst = maxOf(worst, severity[chosen.effectLevel] ?: 0)
+            cardType[chosen.effectLevel]?.let { type ->
+                cards.add(IngredientCard(ing.name, type, chosen.sideEffect, chosen.baseAmount, chosen.source))
+            }
+        }
+
+        val verdict = when (worst) { 2 -> "harmful"; 1 -> "warning"; else -> "safe" }
+        val note = if (verdict == "safe") {
+            "조심해야 할 성분도, 유해한 성분도 찾지 못했어요. 건강 상태에 따라 다를 수 있으니 걱정된다면 전문가와 상담해 보세요."
+        } else null
+        // 유해 먼저, 그다음 주의 순으로 카드 정렬(화면 우선순위)
+        cards.sortByDescending { if (it.type == "harmful") 1 else 0 }
+        return AnalyzeResult(verdict, productName, rawNames.size, noDietEffect, note, cards)
+    }
+
+    /** 성분명 매칭어: 괄호 밖 본명 + 괄호 안 이명 + aliases. 2자 이상만. */
+    private fun matchTerms(ing: Ingredient): List<String> {
+        val terms = LinkedHashSet<String>()
+        val base = ing.name.replace(Regex("\\(.*?\\)"), "").replace(" ", "")
+        if (base.length >= 2) terms.add(base)
+        Regex("\\(([^)]*)\\)").findAll(ing.name).forEach { m ->
+            val inner = m.groupValues[1].replace(" ", "")
+            if (inner.length >= 2) terms.add(inner)
+        }
+        ing.aliases?.split('·', '/', ',')?.forEach { a ->
+            val t = a.trim().replace(" ", "")
+            if (t.length >= 2) terms.add(t)
+        }
+        if (terms.isEmpty()) terms.add(ing.name.replace(" ", ""))
+        return terms.toList()
+    }
+
+    // ── 로그: 동의 시에만. 건강정보(민감정보)는 healthConsent 일 때만 저장 ──
+    private fun writeLog(req: AnalyzeRequest, result: AnalyzeResult) {
+        runCatching {
+            val reqLog = linkedMapOf<String, Any?>(
+                "productReportNo" to req.productReportNo,
+                "hasImage" to (!req.imageBase64.isNullOrBlank()),
+            )
+            if (req.healthConsent) reqLog["conditions"] = req.conditions   // 민감정보 — 동의 시만
+            jdbc.update(
+                "insert into analysis_log(cookie_id, consent, health_consent, product_report_no, verdict, request_body, response_body) " +
+                    "values (?, ?, ?, ?, ?, ?::jsonb, ?::jsonb)",
+                req.cookieId, req.consent, req.healthConsent, req.productReportNo, result.verdict,
+                json.writeValueAsString(reqLog), json.writeValueAsString(result),
+            )
+        }.onFailure { log.warn("analysis_log 적재 실패: {}", it.message) }
+    }
+
+    // ── LLM: 원재료 추출만(판정 X) ──
+    private fun extractFromImage(imageBase64: String, media: String): Pair<String, List<String>> {
+        val raw = when {
+            geminiKey.isNotBlank() -> callGemini(imageBase64, media)
+            anthropicKey.isNotBlank() -> callClaude(imageBase64, media)
+            else -> return DEMO_PRODUCT to DEMO_NAMES
+        } ?: return "분석한 제품" to emptyList()
+        val obj = runCatching { json.readValue(stripFence(raw), Map::class.java) }.getOrNull()
+        val product = (obj?.get("product") as? String)?.takeIf { it.isNotBlank() } ?: "분석한 제품"
+        val names = (obj?.get("ingredients") as? List<*>)?.filterIsInstance<String>() ?: emptyList()
+        return product to names
+    }
+
+    private fun callGemini(imageBase64: String, media: String): String? {
         val body = json.writeValueAsString(
             mapOf(
-                "system_instruction" to mapOf("parts" to listOf(mapOf("text" to systemPrompt()))),
+                "system_instruction" to mapOf("parts" to listOf(mapOf("text" to EXTRACT_PROMPT))),
                 "contents" to listOf(
                     mapOf(
                         "parts" to listOf(
                             mapOf("inline_data" to mapOf("mime_type" to media, "data" to imageBase64)),
-                            mapOf("text" to "이 성분표를 분석해 스키마대로 JSON만 응답해줘."),
+                            mapOf("text" to "이 전성분표에서 원재료명을 추출해 스키마대로 JSON만."),
                         ),
                     ),
                 ),
@@ -54,69 +180,41 @@ class AnalyzeService(
         )
         val request = HttpRequest.newBuilder(
             URI.create("https://generativelanguage.googleapis.com/v1beta/models/$geminiModel:generateContent"),
-        )
-            .header("x-goog-api-key", geminiKey)
-            .header("content-type", "application/json")
-            .POST(HttpRequest.BodyPublishers.ofString(body))
-            .build()
-
+        ).header("x-goog-api-key", geminiKey).header("content-type", "application/json")
+            .POST(HttpRequest.BodyPublishers.ofString(body)).build()
         val response = http.send(request, HttpResponse.BodyHandlers.ofString())
-        if (response.statusCode() !in 200..299) {
-            return mapOf("error" to "gemini ${response.statusCode()}: ${response.body().take(300)}")
-        }
+        if (response.statusCode() !in 200..299) { log.warn("gemini {}", response.statusCode()); return null }
         val root = json.readValue(response.body(), Map::class.java)
-        val parts = (((root["candidates"] as? List<*>)?.firstOrNull() as? Map<*, *>)
-            ?.get("content") as? Map<*, *>)
+        val parts = (((root["candidates"] as? List<*>)?.firstOrNull() as? Map<*, *>)?.get("content") as? Map<*, *>)
             ?.get("parts") as? List<*>
-        val text = parts?.filterIsInstance<Map<*, *>>()
-            ?.firstOrNull { it["text"] != null }
-            ?.get("text") as? String
-            ?: return mapOf("error" to "empty gemini response")
-        return json.readValue(stripFence(text), Map::class.java)
+        return parts?.filterIsInstance<Map<*, *>>()?.firstOrNull { it["text"] != null }?.get("text") as? String
     }
 
-    /** Anthropic Claude (messages) — 폴백. */
-    private fun callClaude(imageBase64: String, media: String): Any {
+    private fun callClaude(imageBase64: String, media: String): String? {
         val body = json.writeValueAsString(
             mapOf(
-                "model" to anthropicModel,
-                "max_tokens" to 1500,
-                "system" to systemPrompt(),
+                "model" to anthropicModel, "max_tokens" to 1200, "system" to EXTRACT_PROMPT,
                 "messages" to listOf(
                     mapOf(
                         "role" to "user",
                         "content" to listOf(
-                            mapOf(
-                                "type" to "image",
-                                "source" to mapOf("type" to "base64", "media_type" to media, "data" to imageBase64),
-                            ),
-                            mapOf("type" to "text", "text" to "이 성분표를 분석해 스키마대로 JSON만 응답해줘."),
+                            mapOf("type" to "image", "source" to mapOf("type" to "base64", "media_type" to media, "data" to imageBase64)),
+                            mapOf("type" to "text", "text" to "이 전성분표에서 원재료명을 추출해 스키마대로 JSON만."),
                         ),
                     ),
                 ),
             ),
         )
         val request = HttpRequest.newBuilder(URI.create("https://api.anthropic.com/v1/messages"))
-            .header("x-api-key", anthropicKey)
-            .header("anthropic-version", "2023-06-01")
+            .header("x-api-key", anthropicKey).header("anthropic-version", "2023-06-01")
             .header("content-type", "application/json")
-            .POST(HttpRequest.BodyPublishers.ofString(body))
-            .build()
-
+            .POST(HttpRequest.BodyPublishers.ofString(body)).build()
         val response = http.send(request, HttpResponse.BodyHandlers.ofString())
-        if (response.statusCode() !in 200..299) {
-            return mapOf("error" to "anthropic ${response.statusCode()}: ${response.body().take(300)}")
-        }
+        if (response.statusCode() !in 200..299) { log.warn("anthropic {}", response.statusCode()); return null }
         val root = json.readValue(response.body(), Map::class.java)
-        val text = (root["content"] as? List<*>)
-            ?.filterIsInstance<Map<*, *>>()
-            ?.firstOrNull { it["type"] == "text" }
-            ?.get("text") as? String
-            ?: return mapOf("error" to "empty anthropic response")
-        return json.readValue(stripFence(text), Map::class.java)
+        return (root["content"] as? List<*>)?.filterIsInstance<Map<*, *>>()
+            ?.firstOrNull { it["type"] == "text" }?.get("text") as? String
     }
-
-    private fun demo(): Any = json.readValue(DEMO, Map::class.java)
 
     private fun stripFence(text: String): String {
         val t = text.trim()
@@ -124,36 +222,32 @@ class AnalyzeService(
         return t.removePrefix("```").substringAfter('\n').substringBeforeLast("```").trim()
     }
 
-    private fun systemPrompt(): String = """
-        너는 식품 성분표 이미지를 분석하는 도우미다. 아래 지식베이스(교차검증된 성분 리스크 리포트)만을 리스크 판단 근거로 쓴다.
-
-        <knowledge_base>
-        $kb
-        </knowledge_base>
-
-        작업:
-        1) 이미지에서 원재료명(전성분)을 모두 추출한다.
-        2) 각 원재료가 지식베이스에서 다뤄지면 그 내용으로 risk/evidence/consensus/source를 채운다.
-           지식베이스에 없으면 risk="unknown", reason은 빈 문자열로 둔다. 근거 없는 단정은 금지한다.
-        3) grade는 성분 중 최악 기준(위험>주의>양호). caution_count는 risk가 warn·bad인 개수.
-
-        반드시 아래 JSON 스키마로만 응답한다(설명·코드펜스 없이 JSON만):
-        {"product":"추정 제품명","summary":{"grade":"good|warn|bad","caution_count":0,"note":"한 줄 요약(음슴체)"},
-        "ingredients":[{"name":"성분명","risk":"good|warn|bad|unknown","reason":"KB 근거 한 줄","evidence":"근거레벨","consensus":"컨센서스|논쟁|-","source":"출처"}]}
-    """.trimIndent()
-
     companion object {
-        // 키 미설정 시 UI/계약 확인용 데모(셀렉스 프로핏 라벨 기준)
-        private val DEMO = """
-            {"product":"셀렉스 프로핏 SPORTS 초콜릿 (데모)",
-             "summary":{"grade":"warn","caution_count":4,"note":"인체 RCT·논쟁 단계 첨가물이 다수임. GEMINI_API_KEY 또는 ANTHROPIC_API_KEY 설정 시 실제 분석함."},
-             "ingredients":[
-               {"name":"카라기난","risk":"warn","reason":"동물실험서 장 점액층 손상·SCFA 감소, 인체 재현 근거는 부족함.","evidence":"동물실험","consensus":"논쟁","source":"EFSA 2018 / Carbohydrate Polymers 2022"},
-               {"name":"CMC(카복시메틸셀룰로스)","risk":"warn","reason":"유화제로 장벽·미생물총 교란 근거(동물·ex vivo), 인체 RCT는 제한적임.","evidence":"동물/ex vivo","consensus":"논쟁","source":"Gut 2017"},
-               {"name":"수크랄로스","risk":"warn","reason":"RCT서 혈당내성 저하 보고, 개인차 큼.","evidence":"RCT","consensus":"논쟁","source":"Cell 2022"},
-               {"name":"아세설팜칼륨","risk":"warn","reason":"국제기구 ADI 이내이나 감미료 대사영향은 연구 중임.","evidence":"국제기구","consensus":"논쟁","source":"NCI 팩트시트"},
-               {"name":"분리유청단백","risk":"unknown","reason":"","evidence":"","consensus":"-","source":""},
-               {"name":"코코아파우더","risk":"unknown","reason":"","evidence":"","consensus":"-","source":""}]}
-        """.trimIndent()
+        private const val EXTRACT_PROMPT =
+            "너는 식품 전성분표 이미지에서 정보만 추출하는 도우미다. 위험도 판정·평가는 절대 하지 않는다. " +
+                "(1) 제품명 추정, (2) 원재료명을 표기 순서대로 추출한다. " +
+                "설명·코드펜스 없이 JSON만 응답한다: {\"product\":\"제품명\",\"ingredients\":[\"원재료명\", ...]}"
+
+        // 키 미설정 시 데모 — 실제 판정 로직을 그대로 태운다(제로 콜라류 라벨)
+        private const val DEMO_PRODUCT = "데모 제로 콜라"
+        private val DEMO_NAMES = listOf("정제수", "탄산가스", "수크랄로스(감미료)", "아세설팜칼륨(감미료)", "합성향료", "구연산")
     }
 }
+
+/** 결과 계약 — 프론트 ResultScreen props 와 1:1. */
+data class AnalyzeResult(
+    val verdict: String,          // safe | warning | harmful
+    val productName: String,
+    val totalDetected: Int,
+    val noDietEffect: Boolean,
+    val note: String?,
+    val ingredients: List<IngredientCard>,
+)
+
+data class IngredientCard(
+    val name: String,
+    val type: String,             // warning | harmful
+    val effect: String?,          // side_effect
+    val dose: String?,            // base_amount
+    val evidence: String?,        // source
+)
