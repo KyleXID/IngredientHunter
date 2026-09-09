@@ -30,7 +30,7 @@ export const S = { xs: 4, sm: 8, md: 12, lg: 16, xl: 20, xxl: 24, x3: 32, x4: 40
 
 /** Type scale — 7단계 */
 export const TXT = {
-  hero: { fontFamily: F.sb, fontWeight: 600, fontSize: 36, lineHeight: 1.28, letterSpacing: '-0.05em', color: C.gray900 },
+  hero: { fontFamily: F.sb, fontWeight: 600, fontSize: 32, lineHeight: 1.3, letterSpacing: '-0.05em', color: C.gray900 },
   title: { fontFamily: F.sb, fontWeight: 600, fontSize: 24, lineHeight: 1.38, letterSpacing: '-0.035em', color: C.gray900 },
   section: { fontFamily: F.sb, fontWeight: 600, fontSize: 19, lineHeight: 1.42, letterSpacing: '-0.03em', color: C.gray900 },
   strong: { fontFamily: F.sb, fontWeight: 600, fontSize: 16, lineHeight: 1.45, letterSpacing: '-0.03em', color: C.gray900 },

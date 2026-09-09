@@ -15,6 +15,13 @@ import { useFlow } from './lib/flow'
 import { addHistory, loadHistory, removeHistory, clearHistory, loadSurvey, saveSurvey } from './lib/storage'
 import type { HistoryItem } from './lib/storage'
 
+// 인트로 히어로 문구 — 3종 롤링(3초). 모두 2줄로 끊어 높이가 흔들리지 않게.
+const HERO_VARIANTS: [string, string][] = [
+  ['배 아프다는 대체당,', '이 제품에는 없을까?'],
+  ['건강 걱정으로 챙긴', '제로음료, 정말 건강할까?'],
+  ['매일 챙겨 먹는 보충제,', '나한테 괜찮을까?'],
+]
+
 // 인기 제품 — 우리 DB(식약처 카탈로그)에 실제 존재하는 report_no. 클릭 시 바로 분석.
 const POPULAR: { reportNo: string; name: string }[] = [
   { reportNo: '19800375002112', name: '코카콜라 제로' },
@@ -34,6 +41,15 @@ export function IntroScreen() {
   const [results, setResults] = useState<ProductRow[]>([])
   const [showHow, setShowHow] = useState(false)
   const [history, setHistory] = useState<HistoryItem[]>(() => loadHistory())
+  const [heroIndex, setHeroIndex] = useState(0)
+
+  // 히어로 문구 롤링 — 검색 중엔 히어로가 접히므로 멈추고, 모션 최소화면 아예 안 돌린다.
+  useEffect(() => {
+    if (focused) return
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+    const t = setInterval(() => setHeroIndex((i) => (i + 1) % HERO_VARIANTS.length), 3000)
+    return () => clearInterval(t)
+  }, [focused])
 
   useEffect(() => {
     if (!query.trim()) { setResults([]); return }
@@ -87,7 +103,17 @@ export function IntroScreen() {
       >
         <Body>
           <Collapse open={!focused} maxHeight={240}>
-            <PageTitle hero title={<>배 아프다는 대체당,<br />이 제품에는 없을까?</>} desc="전성분 표를 찍거나 제품명을 검색하면, 조심해야 할 성분을 찾아드려요." />
+            <PageTitle
+              hero
+              title={
+                <span key={heroIndex} className="anim-fade-up block">
+                  {HERO_VARIANTS[heroIndex][0]}
+                  <br />
+                  {HERO_VARIANTS[heroIndex][1]}
+                </span>
+              }
+              desc="전성분 표를 찍거나 제품명을 검색하면, 조심해야 할 성분을 찾아드려요."
+            />
           </Collapse>
 
           <div className="relative">
