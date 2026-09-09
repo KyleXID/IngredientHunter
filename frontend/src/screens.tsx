@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ChangeEvent } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { C, F, S, TXT, R, L, VERDICT } from './theme'
 import {
   Screen, Body, PageTitle, SectionLabel, Button, Collapse, TextLink, Card, Notice,
@@ -12,17 +12,28 @@ import {
 import { analyze, getHealthSurvey, searchProducts, getCookieId } from './lib/api'
 import type { ConditionGroup, IngredientCard, ProductRow } from './lib/api'
 import { useFlow } from './lib/flow'
+import { addHistory, loadHistory, removeHistory, clearHistory, loadSurvey, saveSurvey } from './lib/storage'
+import type { HistoryItem } from './lib/storage'
 
-const QUICK_SEARCHES = ['코카콜라 제로', '펩시 제로슈거', '칠성사이다 제로', '몬스터 제로', '아이시스 에코']
+// 인기 제품 — 우리 DB(식약처 카탈로그)에 실제 존재하는 report_no. 클릭 시 바로 분석.
+const POPULAR: { reportNo: string; name: string }[] = [
+  { reportNo: '19800375002112', name: '코카콜라 제로' },
+  { reportNo: '19930242053473', name: '펩시제로슈거' },
+  { reportNo: '19780368002607', name: '칠성사이다제로' },
+  { reportNo: '19970614083158', name: '스프라이트 제로' },
+  { reportNo: '201005430661374', name: '나랑드사이다 제로 그린애플' },
+]
 
 /* ═══ 인트로: 제품명 검색(실 API) + 인기 칩 + 사진 분석 ═══ */
 export function IntroScreen() {
   const nav = useNavigate()
-  const { setSource } = useFlow()
+  const { setSource, setPending } = useFlow()
+  const surveyDone = loadSurvey().completed
   const [query, setQuery] = useState('')
   const [focused, setFocused] = useState(false)
   const [results, setResults] = useState<ProductRow[]>([])
   const [showHow, setShowHow] = useState(false)
+  const [history, setHistory] = useState<HistoryItem[]>(() => loadHistory())
 
   useEffect(() => {
     if (!query.trim()) { setResults([]); return }
@@ -33,10 +44,26 @@ export function IntroScreen() {
 
   const showDropdown = focused && query.length > 0
 
-  const pick = (p: ProductRow) => {
-    setSource({ productReportNo: p.reportNo, productName: p.name })
-    nav('/survey')
+  const goProduct = (reportNo: string, name: string) => {
+    addHistory({ reportNo, name })
+    const s = loadSurvey()
+    if (s.completed) {
+      // 설문 완료 상태 → 저장된 건강정보로 바로 분석(설문 재노출 안 함). 수정은 "건강 정보 수정"에서.
+      setPending({
+        productReportNo: reportNo, productName: name,
+        conditions: s.conditions, consent: s.agreed,
+        healthConsent: s.agreed && s.conditions.length > 0, cookieId: getCookieId(),
+      })
+      nav('/loading')
+    } else {
+      setSource({ productReportNo: reportNo, productName: name })
+      nav('/survey')
+    }
   }
+  const pick = (p: ProductRow) => goProduct(p.reportNo, p.name)
+  const pickHistory = (h: HistoryItem) => goProduct(h.reportNo, h.name)
+  const removeOne = (reportNo: string) => { removeHistory(reportNo); setHistory(loadHistory()) }
+  const clearAll = () => { clearHistory(); setHistory([]) }
 
   return (
     <>
@@ -45,7 +72,16 @@ export function IntroScreen() {
         footer={
           <>
             <Button icon={<IconCamera size={19} />} onClick={() => nav('/photo')}>사진 찍고 분석하기</Button>
-            <TextLink onClick={() => setShowHow(true)} iconRight={<IconInfo size={16} color={C.gray300} />}>어떻게 분석하나요</TextLink>
+            <div className="flex items-center justify-center" style={{ gap: S.md, marginTop: S.md }}>
+              <button onClick={() => setShowHow(true)} className="flex items-center gap-1.5 transition-opacity active:opacity-60" style={{ ...TXT.label, color: C.gray500, height: 40, padding: `0 ${S.sm}px` }}>
+                어떻게 분석하나요<IconInfo size={16} color={C.gray300} />
+              </button>
+              {surveyDone && (
+                <button onClick={() => nav('/survey?edit=1')} className="flex items-center transition-opacity active:opacity-60" style={{ ...TXT.label, color: C.gray500, height: 40, padding: `0 ${S.sm}px` }}>
+                  건강 정보 수정
+                </button>
+              )}
+            </div>
           </>
         }
       >
@@ -97,13 +133,36 @@ export function IntroScreen() {
             )}
           </div>
 
-          <Collapse open={!focused} maxHeight={140}>
-            <div className="flex flex-wrap" style={{ gap: S.sm, marginTop: S.md }}>
-              {QUICK_SEARCHES.map((q) => (
-                <button key={q} onClick={() => { setQuery(q); setFocused(true) }} className="transition-all duration-150 active:scale-[0.96]" style={{ padding: `${S.sm}px ${S.md}px`, borderRadius: R.chip, backgroundColor: C.gray50, ...TXT.caption, color: C.gray600 }}>
-                  {q}
-                </button>
-              ))}
+          <Collapse open={!focused} maxHeight={280}>
+            {history.length > 0 && (
+              <div style={{ marginTop: S.lg }}>
+                <div className="flex items-center justify-between" style={{ marginBottom: S.md }}>
+                  <p style={{ ...TXT.caption, fontFamily: F.md, fontWeight: 500, color: C.gray400 }}>최근 본 제품</p>
+                  <button onClick={clearAll} className="transition-opacity active:opacity-60" style={{ ...TXT.caption, color: C.gray400 }}>모두 지우기</button>
+                </div>
+                <div className="flex flex-wrap" style={{ gap: S.sm }}>
+                  {history.map((h) => (
+                    <div key={h.reportNo} className="flex items-center" style={{ borderRadius: R.chip, backgroundColor: C.blueSurface }}>
+                      <button onClick={() => pickHistory(h)} className="transition-all duration-150 active:scale-[0.96]" style={{ padding: `${S.sm}px ${S.xs}px ${S.sm}px ${S.md}px`, ...TXT.caption, color: C.blueStrong }}>
+                        {h.name}
+                      </button>
+                      <button onClick={() => removeOne(h.reportNo)} aria-label="삭제" className="flex items-center justify-center transition-opacity active:opacity-60" style={{ padding: `0 ${S.sm}px`, alignSelf: 'stretch' }}>
+                        <IconClose size={13} color={C.blue} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            <div style={{ marginTop: S.lg }}>
+              <SectionLabel>인기 제품</SectionLabel>
+              <div className="flex flex-wrap" style={{ gap: S.sm }}>
+                {POPULAR.map((p) => (
+                  <button key={p.reportNo} onClick={() => goProduct(p.reportNo, p.name)} className="transition-all duration-150 active:scale-[0.96]" style={{ padding: `${S.sm}px ${S.md}px`, borderRadius: R.chip, backgroundColor: C.gray50, ...TXT.caption, color: C.gray600 }}>
+                    {p.name}
+                  </button>
+                ))}
+              </div>
             </div>
           </Collapse>
         </Body>
@@ -115,13 +174,19 @@ export function IntroScreen() {
 /* ═══ 건강설문: DB(/api/health-survey) 로드 + 개인화 선택 + 동의 ═══ */
 export function SurveyScreen() {
   const nav = useNavigate()
+  const [sp] = useSearchParams()
+  const edit = sp.get('edit') === '1'   // 홈의 "건강 정보 수정"으로 진입(분석 아님, 저장만)
   const { source, setPending } = useFlow()
   const [groups, setGroups] = useState<ConditionGroup[]>([])
-  const [selected, setSelected] = useState<Set<string>>(new Set())
-  const [agreed, setAgreed] = useState(false)
+  const [selected, setSelected] = useState<Set<string>>(() => new Set(loadSurvey().conditions))
+  const [agreed, setAgreed] = useState<boolean>(() => loadSurvey().agreed)
   const [showConsent, setShowConsent] = useState(false)
 
   useEffect(() => { getHealthSurvey().then(setGroups).catch(() => setGroups([])) }, [])
+  // 설문 선택·동의를 로컬에 저장 → 다시 들어와도 유지(completed 플래그는 보존)
+  useEffect(() => {
+    saveSurvey({ conditions: Array.from(selected), agreed, completed: loadSurvey().completed })
+  }, [selected, agreed])
 
   const toggle = (id: string) => {
     const next = new Set(selected)
@@ -132,9 +197,11 @@ export function SurveyScreen() {
   const picked = selected.size > 0
   const consentLabel = picked ? '건강 정보·사용 기록 분석에 동의해요' : '사용 기록 분석에 동의해요'
   // 법령: 동의는 선택. 미동의여도 분석은 진행(로그만 미적재).
-  const ctaLabel = picked ? `${selected.size}개 선택 · 분석 시작` : '분석하기'
+  const ctaLabel = edit ? '저장' : picked ? `${selected.size}개 선택 · 분석 시작` : '분석하기'
 
   const submit = () => {
+    saveSurvey({ conditions: Array.from(selected), agreed, completed: true })
+    if (edit) { nav('/'); return }   // 편집 모드: 저장만 하고 홈으로
     setPending({
       ...source,
       conditions: Array.from(selected),
@@ -189,7 +256,7 @@ export function SurveyScreen() {
 /* ═══ 촬영 가이드: 파일 선택 → base64 → 설문 ═══ */
 export function PhotoGuideScreen() {
   const nav = useNavigate()
-  const { setSource } = useFlow()
+  const { setSource, setPending } = useFlow()
   const fileRef = useRef<HTMLInputElement>(null)
 
   const onFile = (e: ChangeEvent<HTMLInputElement>) => {
@@ -198,8 +265,19 @@ export function PhotoGuideScreen() {
     const reader = new FileReader()
     reader.onload = () => {
       const base64 = (reader.result as string).split(',')[1] ?? ''
-      setSource({ imageBase64: base64, mediaType: f.type || 'image/jpeg' })
-      nav('/survey')
+      const media = f.type || 'image/jpeg'
+      const s = loadSurvey()
+      if (s.completed) {
+        setPending({
+          imageBase64: base64, mediaType: media,
+          conditions: s.conditions, consent: s.agreed,
+          healthConsent: s.agreed && s.conditions.length > 0, cookieId: getCookieId(),
+        })
+        nav('/loading')
+      } else {
+        setSource({ imageBase64: base64, mediaType: media })
+        nav('/survey')
+      }
     }
     reader.readAsDataURL(f)
   }

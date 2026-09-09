@@ -27,8 +27,8 @@ export interface ProductRow {
   reportNo: string
   name: string
   maker: string | null
-  category: string
-  ingredientsJson: string | null
+  category?: string
+  ingredientsJson?: string | null
 }
 
 /** POST /api/analyze 요청 */
@@ -53,12 +53,14 @@ export async function getHealthSurvey(): Promise<ConditionGroup[]> {
   return toJson<ConditionGroup[]>(await fetch('/api/health-survey'))
 }
 
-/** 검색: Spring Page 에서 content 만 꺼내 반환 */
+/**
+ * 검색 자동완성 — 서버사이드: 띄어쓰기 무시 매칭 + 이름(공백무시) 중복 제거(이름당 대표 1건).
+ * (카탈로그는 report_no 단위 미러라 동일 제품이 여러 건 → 서버에서 정리)
+ */
 export async function searchProducts(q: string, size = 8): Promise<ProductRow[]> {
   if (!q.trim()) return []
-  const res = await fetch(`/api/products?q=${encodeURIComponent(q)}&size=${size}`)
-  const page = await toJson<{ content: ProductRow[] }>(res)
-  return page.content ?? []
+  const res = await fetch(`/api/products/search?q=${encodeURIComponent(q)}&limit=${size}`)
+  return toJson<ProductRow[]>(res)
 }
 
 export async function analyze(body: AnalyzeInput): Promise<AnalyzeResult> {
