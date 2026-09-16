@@ -43,6 +43,8 @@ class AnalyzeService(
         "당뇨병 환자" to "diabetes",
         "유당불내증" to "lactose",
         "갈락토스혈증 환자" to "galactose",
+        "우유알레르기" to "milk_allergy",
+        "대두알레르기" to "soy_allergy",
     )
 
     // ── 진입점 ──
