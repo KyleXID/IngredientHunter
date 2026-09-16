@@ -3,11 +3,11 @@ import type { ChangeEvent } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { C, F, S, TXT, R, L, VERDICT } from './theme'
 import {
-  Screen, Body, PageTitle, SectionLabel, InlineAction, ProductChip, ProductNameField, Button, Collapse, TextLink, TextLinkRow, Card, Notice,
-  VerdictBadge, CheckBox, ConsentRow, HowItWorksModal, HealthConsentModal, LogConsentModal, ShareModal, summarize,
+  Screen, Body, PageTitle, SectionLabel, InlineAction, ProductChip, ProductNameField, Button, Collapse, TextLink, TextLinkRow, Card,
+  VerdictBadge, CheckBox, RadioMark, ConsentRow, NoticeStack, HowItWorksModal, HealthConsentModal, LogConsentModal, ShareModal, summarize,
   rowDivider, ROW_TEXT_INSET,
   IconSearch, IconCamera, IconImage, IconArrowRight, IconChevronLeft, IconCheck,
-  IconWarning, IconDanger, IconInfo, IconRefresh, IconShare, IconClose,
+  IconWarning, IconDanger, IconInfo, IconRefresh, IconShare, IconClose, IconPencil,
 } from './ui'
 import { analyze, getHealthSurvey, searchProducts, getCookieId } from './lib/api'
 import type { ConditionGroup, IngredientCard, ProductRow } from './lib/api'
@@ -21,6 +21,9 @@ const HERO_VARIANTS: [string, string][] = [
   ['건강 걱정으로 챙긴', '제로음료, 정말 건강할까?'],
   ['매일 챙겨 먹는 보충제,', '나한테 괜찮을까?'],
 ]
+
+// 하나만 고를 수 있는 설문 그룹 — 나머지는 중복 선택. 그룹명은 DB(health_survey.category) 값과 같아야 한다.
+const SINGLE_CHOICE_GROUPS = ['생애주기']
 
 // 검색 결과 리스트 최소 높이 — 자판이 크게 올라와도 최소 1행은 남긴다.
 const LIST_MIN = 54
@@ -129,7 +132,9 @@ export function IntroScreen() {
             <Button icon={<IconCamera size={19} />} onClick={() => nav('/photo')}>사진 찍고 분석하기</Button>
             <TextLinkRow>
               <TextLink onClick={() => setShowHow(true)} iconRight={<IconInfo size={16} color={C.gray300} />}>어떻게 분석하나요</TextLink>
-              {surveyDone && <TextLink onClick={() => nav('/survey?edit=1')}>건강 정보 수정</TextLink>}
+              {surveyDone && (
+                <TextLink onClick={() => nav('/survey?edit=1')} iconLeft={<IconPencil size={15} color={C.gray400} />}>건강 정보 수정</TextLink>
+              )}
             </TextLinkRow>
           </>
         }
@@ -227,24 +232,66 @@ export function SurveyScreen() {
   const [sp] = useSearchParams()
   const edit = sp.get('edit') === '1'   // 홈의 "건강 정보 수정"으로 진입(분석 아님, 저장만)
   const { source, setPending } = useFlow()
+  const saved = useState(() => loadSurvey())[0]
   const [groups, setGroups] = useState<ConditionGroup[]>([])
-  const [selected, setSelected] = useState<Set<string>>(() => new Set(loadSurvey().conditions))
-  const [agreeHealth, setAgreeHealth] = useState<boolean>(() => loadSurvey().agreeHealth)  // 필수(건강상태 선택 시)
-  const [agreeLog, setAgreeLog] = useState<boolean>(() => loadSurvey().agreeLog)            // 선택
+  const [selected, setSelected] = useState<Set<string>>(() => new Set(saved.conditions))
+  const [noneGroups, setNoneGroups] = useState<Set<string>>(() => new Set(saved.noneGroups))
+  const [agreeHealth, setAgreeHealth] = useState<boolean>(saved.agreeHealth)  // 필수(건강상태 선택 시)
+  const [agreeLog, setAgreeLog] = useState<boolean>(saved.agreeLog)            // 선택
   const [showHealth, setShowHealth] = useState(false)
   const [showLog, setShowLog] = useState(false)
+  // 한 번 마친 사람이 다시 들어오면 전부 펼쳐 둔다(수정하러 온 것이므로 순차 노출이 방해된다)
+  const revealAll = useState(() => saved.completed)[0]
+  const groupRefs = useRef<Record<string, HTMLDivElement | null>>({})
+  const shownCount = useRef(0)
 
   useEffect(() => { getHealthSurvey().then(setGroups).catch(() => setGroups([])) }, [])
   // 설문 선택·동의를 로컬에 저장 → 다시 들어와도 유지(completed 플래그는 보존)
   useEffect(() => {
-    saveSurvey({ conditions: Array.from(selected), agreeHealth, agreeLog, completed: loadSurvey().completed })
-  }, [selected, agreeHealth, agreeLog])
+    saveSurvey({ conditions: Array.from(selected), noneGroups: Array.from(noneGroups), agreeHealth, agreeLog, completed: loadSurvey().completed })
+  }, [selected, noneGroups, agreeHealth, agreeLog])
 
-  const toggle = (id: string) => {
+  /* 한 그룹을 고르면 다음 그룹이 아래에 나타난다. '해당없음'도 고른 것으로 친다. */
+  const isDone = (g: ConditionGroup) => noneGroups.has(g.group) || g.items.some((i) => selected.has(i.id))
+  const visible = revealAll ? groups : groups.filter((_, gi) => groups.slice(0, gi).every(isDone))
+
+  // 새 그룹이 열리면 그 자리로 부드럽게 이동시킨다
+  useEffect(() => {
+    if (shownCount.current > 0 && visible.length > shownCount.current) {
+      groupRefs.current[visible[visible.length - 1].group]?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+    shownCount.current = visible.length
+  }, [visible.length])
+
+  const clearHealthConsentIfEmpty = (next: Set<string>) => { if (next.size === 0) setAgreeHealth(false) }
+
+  const pickItem = (group: string, id: string) => {
     const next = new Set(selected)
-    if (next.has(id)) next.delete(id); else next.add(id)
-    if (next.size === 0) setAgreeHealth(false)   // 건강상태를 모두 해제하면 건강 동의도 되돌림
-    setSelected(next)
+    if (SINGLE_CHOICE_GROUPS.includes(group)) {
+      // 하나만 고르는 그룹 — 같은 그룹의 기존 선택을 먼저 비운다
+      groups.find((g) => g.group === group)?.items.forEach((i) => next.delete(i.id))
+      if (!selected.has(id)) next.add(id)
+    } else {
+      if (next.has(id)) next.delete(id); else next.add(id)
+    }
+    // 항목을 고르면 그 그룹의 '해당없음'은 풀린다
+    const nextNone = new Set(noneGroups); nextNone.delete(group)
+    clearHealthConsentIfEmpty(next)
+    setSelected(next); setNoneGroups(nextNone)
+  }
+
+  const pickNone = (group: string) => {
+    const nextNone = new Set(noneGroups)
+    const next = new Set(selected)
+    if (nextNone.has(group)) {
+      nextNone.delete(group)
+    } else {
+      nextNone.add(group)
+      // '해당없음'을 고르면 그 그룹에서 고른 것들은 모두 해제한다
+      groups.find((g) => g.group === group)?.items.forEach((i) => next.delete(i.id))
+    }
+    clearHealthConsentIfEmpty(next)
+    setSelected(next); setNoneGroups(nextNone)
   }
 
   // 건강 정보 동의는 건강상태를 골랐을 때만 필요하고 그땐 필수. 사용 기록 동의는 선택(버튼 안 막음).
@@ -255,7 +302,8 @@ export function SurveyScreen() {
     : edit ? '저장' : picked ? `${selected.size}개 선택 · 분석 시작` : '분석하기'
 
   const submit = () => {
-    saveSurvey({ conditions: Array.from(selected), agreeHealth, agreeLog, completed: true })
+    // noneGroups 는 화면 전용 — conditions 에 섞이지 않는다
+    saveSurvey({ conditions: Array.from(selected), noneGroups: Array.from(noneGroups), agreeHealth, agreeLog, completed: true })
     if (edit) { nav('/'); return }   // 편집 모드: 저장만 하고 홈으로
     setPending({
       ...source,
@@ -291,25 +339,39 @@ export function SurveyScreen() {
       >
         <Body>
           <PageTitle title={<>해당하는 건강 상태를<br />모두 골라주세요</>} desc="고른 상태에 맞춰 조심해야 할 성분을 더 정확하게 찾아드려요. 해당하는 항목이 없으면 고르지 않아도 괜찮아요." />
-          {groups.map(({ group, items }, gi) => (
-            <div key={group} style={{ marginTop: gi === 0 ? 0 : S.xxl }}>
-              <SectionLabel>{group}</SectionLabel>
-              <Card padded={false}>
-                {items.map(({ id, label, desc }, i) => {
-                  const on = selected.has(id)
-                  return (
-                    <button key={id} onClick={() => toggle(id)} className="w-full text-left flex items-center transition-colors duration-150" style={{ gap: S.md, padding: `${S.lg}px ${S.lg}px`, borderTop: rowDivider(i), backgroundColor: on ? C.blueSurface : C.white }}>
-                      <CheckBox on={on} size={22} />
-                      <div className="flex-1 min-w-0">
-                        <p style={{ ...TXT.label, color: on ? C.blueStrong : C.gray900 }}>{label}</p>
-                        <p style={{ ...TXT.caption, color: on ? C.blue : C.gray400, marginTop: 2 }}>{desc}</p>
-                      </div>
-                    </button>
-                  )
-                })}
-              </Card>
-            </div>
-          ))}
+          {visible.map((g, gi) => {
+            const single = SINGLE_CHOICE_GROUPS.includes(g.group)
+            const Mark = single ? RadioMark : CheckBox
+            const noneOn = noneGroups.has(g.group)
+            return (
+              <div
+                key={g.group}
+                ref={(el) => { groupRefs.current[g.group] = el }}
+                className={gi === 0 ? undefined : 'anim-fade-up'}
+                style={{ marginTop: gi === 0 ? 0 : S.xxl, scrollMarginTop: S.lg }}
+              >
+                <SectionLabel>{g.group}</SectionLabel>
+                <Card padded={false}>
+                  {g.items.map(({ id, label, desc }, i) => {
+                    const on = selected.has(id)
+                    return (
+                      <button key={id} onClick={() => pickItem(g.group, id)} className="w-full text-left flex items-center transition-colors duration-150" style={{ gap: S.md, padding: `${S.lg}px ${S.lg}px`, borderTop: rowDivider(i), backgroundColor: on ? C.blueSurface : C.white }}>
+                        <Mark on={on} size={22} />
+                        <div className="flex-1 min-w-0">
+                          <p style={{ ...TXT.label, color: on ? C.blueStrong : C.gray900 }}>{label}</p>
+                          {desc && <p style={{ ...TXT.caption, color: on ? C.blue : C.gray400, marginTop: 2 }}>{desc}</p>}
+                        </div>
+                      </button>
+                    )
+                  })}
+                  <button onClick={() => pickNone(g.group)} className="w-full text-left flex items-center transition-colors duration-150" style={{ gap: S.md, padding: `${S.lg}px ${S.lg}px`, borderTop: rowDivider(g.items.length), backgroundColor: noneOn ? C.blueSurface : C.white }}>
+                    <Mark on={noneOn} size={22} />
+                    <p style={{ ...TXT.label, color: noneOn ? C.blueStrong : C.gray900 }}>해당없음</p>
+                  </button>
+                </Card>
+              </div>
+            )
+          })}
         </Body>
       </Screen>
     </>
@@ -504,10 +566,8 @@ export function ResultScreen() {
               <p style={{ ...TXT.caption, color: v.toneText, marginTop: 2 }}>{summarize(result.totalDetected, result.ingredients)}</p>
             </div>
           </div>
-          {result.noDietEffect && (
-            <div style={{ marginTop: S.lg }}><Notice plain>제품에 포함된 감미료는 다이어트에 긍정적 효과는 없어요.</Notice></div>
-          )}
-          {result.note && <p style={{ ...TXT.body, marginTop: S.xl }}>{result.note}</p>}
+          {/* 안내 순서: 정보 제한 > 다이어트 효과 없음 > 카페인(백엔드에서 검출 여부가 오면 추가) */}
+          <NoticeStack items={[result.note, result.noDietEffect && '제품에 포함된 감미료는 다이어트에 긍정적 효과는 없어요.']} />
           {result.ingredients.length > 0 && (
             <div style={{ marginTop: S.xxl, display: 'flex', flexDirection: 'column', gap: S.md }}>
               {result.ingredients.map((ing, i) => <IngredientRiskCard key={ing.name} data={ing} index={i} />)}

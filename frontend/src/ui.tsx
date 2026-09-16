@@ -358,6 +358,15 @@ export function CheckBox({ on, size = 22 }: { on: boolean; size?: number }) {
   )
 }
 
+/** 라디오 표식 — 하나만 고르는 그룹에서 체크박스 대신 쓴다. 크기·색은 체크박스와 같다. */
+export function RadioMark({ on, size = 22 }: { on: boolean; size?: number }) {
+  return (
+    <div className="shrink-0 flex items-center justify-center transition-all duration-150" style={{ width: size, height: size, borderRadius: R.chip, backgroundColor: on ? C.blue : C.white, border: `${on ? 1.5 : 1}px solid ${on ? C.blue : C.gray200}` }}>
+      {on && <div className="anim-pop" style={{ width: size / 4, height: size / 4, borderRadius: R.chip, backgroundColor: C.white }} />}
+    </div>
+  )
+}
+
 /** 동의 한 줄 — 체크박스 + 필수/선택 배지 + 문구 + 자세히 보기 */
 export function ConsentRow({ on, onToggle, children, onDetail, required = false }: { on: boolean; onToggle: () => void; children: ReactNode; onDetail?: () => void; required?: boolean }) {
   return (
@@ -372,6 +381,18 @@ export function ConsentRow({ on, onToggle, children, onDetail, required = false 
           자세히 보기<IconInfo size={15} color={C.gray300} />
         </button>
       )}
+    </div>
+  )
+}
+
+/** 결과 안내 문구 묶음 — 넘겨준 순서대로 쌓는다(정보 제한 > 다이어트 효과 없음 > 카페인).
+ *  빈 값은 건너뛰고, 남는 게 없으면 자리도 차지하지 않는다. */
+export function NoticeStack({ items }: { items: (string | null | undefined | false)[] }) {
+  const list = items.filter((t): t is string => !!t)
+  if (list.length === 0) return null
+  return (
+    <div style={{ marginTop: S.lg, display: 'flex', flexDirection: 'column', gap: S.md }}>
+      {list.map((t) => <Notice plain key={t}>{t}</Notice>)}
     </div>
   )
 }
