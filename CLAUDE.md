@@ -83,3 +83,30 @@
 ## 응답 언어
 
 모든 응답·커밋·PR은 한국어. 코드 주석은 영어 허용.
+
+## 협업·주의 (3인 git)
+
+3인이 같이 작업하므로 **되돌리기 비싼 영역**을 아래로 못 박는다.
+
+### main 보호
+- `main` 직접 커밋·푸시·머지 금지. **모든 반영은 PR로만.** (브랜치 보호가 없어 푸시가 성공해도 하지 않는다.)
+- 작업 브랜치는 `feature/<주제>`, 베이스는 `main`. PR 제목·본문은 한국어.
+- 저장소 소유자 계정은 `KyleXID`. PR 생성 권한이 그 계정에 있으니 `gh auth switch --user KyleXID` 후 `gh pr create`.
+
+### 스키마 = Flyway 전용
+- DB 스키마·시드 변경은 **오직 Flyway 마이그레이션**(`backend/src/main/resources/db/migration/V*.sql`)으로. `ddl-auto=validate` 유지(자동 생성 금지).
+- **이미 머지된 `Vn` 파일은 절대 수정하지 않는다.** 항상 다음 번호의 새 파일을 추가한다(수정 시 체크섬 불일치로 기동 실패).
+- 엔티티(JPA) 변경은 마이그레이션과 **같은 PR**에서 함께.
+
+### 민감정보
+- API 키·DB 접속정보는 `.env`(gitignore)에만. **키·고객 PII는 커밋·로그·응답에 남기지 않는다.**
+- 이미지 분석 원문·건강설문 결과는 민감정보 → 사용자 동의(`healthConsent`) 시에만 저장.
+
+### 성분 리스크 데이터 (해자)
+- `ingredient_rule` 추가·수정 시 **반드시 `source`·`source_url`·`source_tier`·`effect_level`** 를 함께 채운다. 근거 없는 판정은 넣지 않는다.
+- 판정 로직의 중심은 `AnalyzeService.judge()`(개인화·verdict=최악값·noDietEffect). 매칭은 `matchTerms()`(본명+괄호안 이명+aliases, 공백무시 부분일치). 손대기 전 이 흐름을 먼저 읽는다.
+- 건강설문 코드(`health_survey.code`)와 규칙(`ingredient_rule.applies_to`)은 `AnalyzeService.conditionOfApplies` 로 연결된다. 새 조건 추가 시 세 곳(시드·규칙·매핑)을 함께 맞춘다.
+
+### 로컬 실행
+- 한 번에: `./dev.sh` (Postgres docker + 백엔드 :8080 + 프론트 :5173, `.env` 자동 로드).
+- 프론트는 Vite dev proxy 로 `/api` → `:8080` 프록시(별도 CORS 설정 불필요).
