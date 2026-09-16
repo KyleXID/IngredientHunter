@@ -45,6 +45,13 @@ class AnalyzeService(
         "갈락토스혈증 환자" to "galactose",
         "우유알레르기" to "milk_allergy",
         "대두알레르기" to "soy_allergy",
+        "페닐케톤뇨증" to "pku",
+        "카페인 민감" to "caffeine",
+        "임신 중·수유 중" to "pregnant",
+        "영유아·어린이" to "children",
+        "아황산염 민감" to "asthma",
+        "고혈압" to "hypertension",
+        "신장질환" to "kidney",
     )
 
     // ── 진입점 ──
