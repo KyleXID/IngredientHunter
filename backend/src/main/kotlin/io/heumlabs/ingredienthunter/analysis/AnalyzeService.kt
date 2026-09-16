@@ -183,7 +183,7 @@ class AnalyzeService(
         ).header("x-goog-api-key", geminiKey).header("content-type", "application/json")
             .POST(HttpRequest.BodyPublishers.ofString(body)).build()
         val respBody = sendWithRetry(request, "gemini") ?: return null
-        val root = json.readValue(respBody, Map::class.java)
+        val root = runCatching { json.readValue(respBody, Map::class.java) }.getOrNull() ?: return null
         val parts = (((root["candidates"] as? List<*>)?.firstOrNull() as? Map<*, *>)?.get("content") as? Map<*, *>)
             ?.get("parts") as? List<*>
         return parts?.filterIsInstance<Map<*, *>>()?.firstOrNull { it["text"] != null }?.get("text") as? String
@@ -209,13 +209,14 @@ class AnalyzeService(
             .header("content-type", "application/json")
             .POST(HttpRequest.BodyPublishers.ofString(body)).build()
         val respBody = sendWithRetry(request, "anthropic") ?: return null
-        val root = json.readValue(respBody, Map::class.java)
+        val root = runCatching { json.readValue(respBody, Map::class.java) }.getOrNull() ?: return null
         return (root["content"] as? List<*>)?.filterIsInstance<Map<*, *>>()
             ?.firstOrNull { it["type"] == "text" }?.get("text") as? String
     }
 
     /**
-     * 429/5xx(일시적 과부하)면 지수 백오프로 재시도. 최종 실패 시 응답 본문 앞부분까지 로깅.
+     * 429/5xx(일시적 과부하)면 선형 백오프(600ms·1200ms)로 재시도. 최종 실패 시 응답 본문 앞부분까지 로깅.
+     * 인터럽트(요청 취소·서버 셧다운)는 재시도하지 않고 플래그 복구 후 즉시 중단.
      * ponytail: 요청 스레드에서 Thread.sleep 블로킹 — 단일 사용자 데모엔 충분. 동시성 커지면 WebClient 비동기로.
      */
     private fun sendWithRetry(request: HttpRequest, who: String): String? {
@@ -223,24 +224,30 @@ class AnalyzeService(
         while (true) {
             val response = try {
                 http.send(request, HttpResponse.BodyHandlers.ofString())
+            } catch (e: InterruptedException) {
+                Thread.currentThread().interrupt(); log.warn("{} 요청 인터럽트 — 중단", who); return null
             } catch (e: Exception) {
                 if (attempt++ < MAX_RETRY) {
-                    log.warn("{} 요청 실패({}) — 재시도 {}/{}", who, e.message, attempt, MAX_RETRY); backoff(attempt); continue
+                    log.warn("{} 요청 실패({}) — 재시도 {}/{}", who, e.message, attempt, MAX_RETRY)
+                    if (!backoff(attempt)) return null
+                    continue
                 }
                 log.warn("{} 요청 실패({}) — 재시도 소진", who, e.message); return null
             }
             val sc = response.statusCode()
             if (sc in 200..299) return response.body()
             if (sc in RETRYABLE && attempt++ < MAX_RETRY) {
-                log.warn("{} {} — 재시도 {}/{}: {}", who, sc, attempt, MAX_RETRY, response.body().take(200)); backoff(attempt); continue
+                log.warn("{} {} — 재시도 {}/{}: {}", who, sc, attempt, MAX_RETRY, response.body().take(200))
+                if (!backoff(attempt)) return null
+                continue
             }
             log.warn("{} {} 실패: {}", who, sc, response.body().take(300)); return null
         }
     }
 
-    private fun backoff(attempt: Int) {
-        runCatching { Thread.sleep(600L * attempt) }
-    }
+    /** 지정 시간 대기. 인터럽트되면 플래그 복구 후 false 반환(호출부가 재시도 중단하도록). */
+    private fun backoff(attempt: Int): Boolean =
+        try { Thread.sleep(600L * attempt); true } catch (e: InterruptedException) { Thread.currentThread().interrupt(); false }
 
     private fun stripFence(text: String): String {
         val t = text.trim()
