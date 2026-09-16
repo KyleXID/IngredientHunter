@@ -42,7 +42,6 @@ export function IntroScreen() {
   const nav = useNavigate()
   const { setSource, setPending } = useFlow()
   const savedSurvey = loadSurvey()
-  const surveyDone = savedSurvey.completed
   const savedCount = savedSurvey.conditions.length
   const [query, setQuery] = useState('')
   const [focused, setFocused] = useState(false)
@@ -200,16 +199,6 @@ export function IntroScreen() {
           </div>
 
           <Collapse open={!focused}>
-            {/* 개인화가 걸려 있다는 신호 + 수정 진입점.
-                질환명은 적지 않는다 — 민감정보라 첫 화면에서 어깨너머로 보이면 안 된다. */}
-            {surveyDone && (
-              <div className="flex items-center justify-between" style={{ marginTop: S.lg, marginBottom: S.xxl }}>
-                <p style={{ ...TXT.caption, color: C.gray500 }}>
-                  {savedCount > 0 ? `건강 정보 ${savedCount}개를 반영하고 있어요` : '건강 정보는 반영하지 않고 있어요'}
-                </p>
-                <InlineAction onClick={() => nav('/survey?edit=1')}>수정</InlineAction>
-              </div>
-            )}
             {history.length > 0 && (
               <div style={{ marginTop: S.lg }}>
                 <SectionLabel action={<InlineAction onClick={clearAll}>모두 지우기</InlineAction>}>최근 본 제품</SectionLabel>
@@ -228,6 +217,15 @@ export function IntroScreen() {
                 ))}
               </div>
             </div>
+
+            {/* 개인화가 걸려 있다는 신호 + 수정 진입점. 고른 게 없으면 알릴 것도 없어 감춘다.
+                질환명은 적지 않는다 — 민감정보라 첫 화면에서 어깨너머로 보이면 안 된다. */}
+            {savedCount > 0 && (
+              <div className="flex items-center justify-between" style={{ marginTop: S.xxl }}>
+                <p style={{ ...TXT.caption, color: C.gray500 }}>건강 정보 {savedCount}개를 반영하고 있어요</p>
+                <InlineAction onClick={() => nav('/survey?edit=1')}>수정</InlineAction>
+              </div>
+            )}
           </Collapse>
         </Body>
       </Screen>
