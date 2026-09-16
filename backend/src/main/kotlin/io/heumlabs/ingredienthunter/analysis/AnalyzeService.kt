@@ -117,12 +117,16 @@ class AnalyzeService(
         }
 
         val verdict = when (worst) { 2 -> "harmful"; 1 -> "warning"; else -> "safe" }
-        val note = if (verdict == "safe") {
-            "조심해야 할 성분도, 유해한 성분도 찾지 못했어요. 건강 상태에 따라 다를 수 있으니 걱정된다면 전문가와 상담해 보세요."
-        } else null
+        val covered = matched.size    // 리스크 DB에 매칭된 성분 수
+        val note = when {
+            // 매칭 0건은 "안전"이 아니라 "아직 DB에 없어 판단 못 함" — 정직하게 구분
+            covered == 0 -> "입력·인식된 성분이 아직 리스크 DB에 등록되지 않아 분석 정보가 제한적이에요. 참고용으로만 봐 주세요."
+            verdict == "safe" -> "조심해야 할 성분도, 유해한 성분도 찾지 못했어요. 건강 상태에 따라 다를 수 있으니 걱정된다면 전문가와 상담해 보세요."
+            else -> null
+        }
         // 유해 먼저, 그다음 주의 순으로 카드 정렬(화면 우선순위)
         cards.sortByDescending { if (it.type == "harmful") 1 else 0 }
-        return AnalyzeResult(verdict, productName, rawNames.size, noDietEffect, note, cards)
+        return AnalyzeResult(verdict, productName, rawNames.size, covered, noDietEffect, note, cards)
     }
 
     /** 성분명 매칭어: 괄호 밖 본명 + 괄호 안 이명 + aliases. 2자 이상만. */
@@ -285,6 +289,7 @@ data class AnalyzeResult(
     val verdict: String,          // safe | warning | harmful
     val productName: String,
     val totalDetected: Int,
+    val coveredCount: Int,        // 리스크 DB에 매칭된 성분 수(0이면 판정 근거 없음 = "안전" 아님)
     val noDietEffect: Boolean,
     val note: String?,
     val ingredients: List<IngredientCard>,
