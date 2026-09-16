@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { ChangeEvent } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { C, F, S, TXT, R, L, VERDICT } from './theme'
@@ -22,6 +22,9 @@ const HERO_VARIANTS: [string, string][] = [
   ['매일 챙겨 먹는 보충제,', '나한테 괜찮을까?'],
 ]
 
+// 검색 결과 리스트 최소 높이 — 자판이 크게 올라와도 최소 1행은 남긴다.
+const LIST_MIN = 54
+
 // 인기 제품 — 우리 DB(식약처 카탈로그)에 실제 존재하는 report_no. 클릭 시 바로 분석.
 const POPULAR: { reportNo: string; name: string }[] = [
   { reportNo: '19800375002112', name: '코카콜라 제로' },
@@ -42,6 +45,8 @@ export function IntroScreen() {
   const [showHow, setShowHow] = useState(false)
   const [history, setHistory] = useState<HistoryItem[]>(() => loadHistory())
   const [heroIndex, setHeroIndex] = useState(0)
+  const [listMax, setListMax] = useState(0)
+  const fieldRef = useRef<HTMLDivElement>(null)
 
   // 히어로 문구 롤링 — 검색 중엔 히어로가 접히므로 멈추고, 모션 최소화면 아예 안 돌린다.
   useEffect(() => {
@@ -60,7 +65,41 @@ export function IntroScreen() {
 
   const showDropdown = focused && query.length > 0
 
-  const goProduct = (reportNo: string, name: string) => {
+  /* 리스트 높이는 두 경계 중 먼저 만나는 쪽까지만 쓴다.
+     - 평소: 하단 액션 영역의 윗선 (버튼에 맞추면 그 배경과 맞닿아 붙어 보인다)
+     - 자판이 올라오면: 보이는 화면 아래끝 (position:fixed + vh/dvh 는 자판에 반응하지
+       않으므로 visualViewport 가 유일한 단서다) */
+  useLayoutEffect(() => {
+    if (!showDropdown) return
+
+    const update = () => {
+      const el = fieldRef.current
+      if (!el) return
+      const vv = window.visualViewport
+      const visibleBottom = vv ? vv.offsetTop + vv.height : window.innerHeight
+      const block = document.querySelector('[data-footer-block]')
+      const footerBlockTop = block?.getBoundingClientRect().top ?? Infinity
+      const listTop = el.getBoundingClientRect().bottom + S.sm // 검색창 아래 8px 띄운 위치
+      const room = Math.min(visibleBottom, footerBlockTop) - listTop - S.lg
+      setListMax(Math.max(LIST_MIN, Math.round(room)))
+    }
+
+    update()
+    // 히어로가 접히면서 검색창이 위로 올라가므로, 애니메이션이 끝난 뒤 다시 잰다
+    const settle = setTimeout(update, 320)
+    const vv = window.visualViewport
+    vv?.addEventListener('resize', update)
+    vv?.addEventListener('scroll', update)
+    window.addEventListener('resize', update)
+    return () => {
+      clearTimeout(settle)
+      vv?.removeEventListener('resize', update)
+      vv?.removeEventListener('scroll', update)
+      window.removeEventListener('resize', update)
+    }
+  }, [showDropdown])
+
+  const goProduct =(reportNo: string, name: string) => {
     addHistory({ reportNo, name })
     const s = loadSurvey()
     if (s.completed) {
@@ -118,6 +157,7 @@ export function IntroScreen() {
 
           <div className="relative">
             <div
+              ref={fieldRef}
               className="flex items-center transition-all duration-150"
               style={{ gap: S.md, height: L.field, padding: `0 ${S.lg}px`, borderRadius: R.md, backgroundColor: focused ? C.white : C.gray25, border: `${focused ? 1.5 : 1}px solid ${focused ? C.blue : C.gray100}` }}
             >
@@ -140,7 +180,9 @@ export function IntroScreen() {
 
             {showDropdown && (
               <div className="absolute left-0 right-0 overflow-hidden z-10 anim-fade-up" style={{ top: '100%', marginTop: S.sm, backgroundColor: C.white, borderRadius: R.md, border: `1px solid ${C.gray100}`, boxShadow: '0 12px 32px rgba(25,31,40,0.10)' }}>
-                <div style={{ maxHeight: '46vh', overflowY: 'auto' }}>
+                {/* 보이는 화면 높이에서 계산한 만큼만 열고, 넘치면 리스트만 스크롤한다.
+                    대체 경로 줄은 리스트의 마지막 항목으로 들어간다. */}
+                <div style={{ maxHeight: listMax, overflowY: 'auto' }}>
                   {results.map((p, i) => (
                     <button key={p.reportNo} className="w-full flex items-center text-left transition-colors" style={{ gap: S.md, padding: S.lg, paddingLeft: ROW_TEXT_INSET, borderTop: rowDivider(i) }} onMouseDown={(e) => e.preventDefault()} onClick={() => pick(p)}>
                       <span className="flex-1" style={{ ...TXT.label, color: C.gray900 }}>{p.name}</span>
@@ -475,7 +517,7 @@ export function ResultScreen() {
             </div>
           </div>
           {result.noDietEffect && (
-            <div style={{ marginTop: S.lg }}><Notice plain>분석 결과, 다이어트 효과가 없는 감미료가 포함됐어요.</Notice></div>
+            <div style={{ marginTop: S.lg }}><Notice plain>제품에 포함된 감미료는 다이어트에 긍정적 효과는 없어요.</Notice></div>
           )}
           {result.note && <p style={{ ...TXT.body, marginTop: S.xl }}>{result.note}</p>}
           {result.ingredients.length > 0 && (
