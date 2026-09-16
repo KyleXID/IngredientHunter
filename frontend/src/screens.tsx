@@ -7,7 +7,7 @@ import {
   VerdictBadge, CheckBox, RadioMark, ConsentRow, NoticeStack, HowItWorksModal, HealthConsentModal, LogConsentModal, ShareModal, summarize,
   rowDivider, ROW_TEXT_INSET,
   IconSearch, IconCamera, IconImage, IconArrowRight, IconChevronLeft, IconCheck,
-  IconWarning, IconDanger, IconInfo, IconRefresh, IconShare, IconClose, IconPencil,
+  IconWarning, IconDanger, IconInfo, IconRefresh, IconShare, IconClose,
 } from './ui'
 import { analyze, getHealthSurvey, searchProducts, getCookieId } from './lib/api'
 import type { ConditionGroup, IngredientCard, ProductRow } from './lib/api'
@@ -41,7 +41,9 @@ const POPULAR: { reportNo: string; name: string }[] = [
 export function IntroScreen() {
   const nav = useNavigate()
   const { setSource, setPending } = useFlow()
-  const surveyDone = loadSurvey().completed
+  const savedSurvey = loadSurvey()
+  const surveyDone = savedSurvey.completed
+  const savedCount = savedSurvey.conditions.length
   const [query, setQuery] = useState('')
   const [focused, setFocused] = useState(false)
   const [results, setResults] = useState<ProductRow[]>([])
@@ -132,9 +134,6 @@ export function IntroScreen() {
             <Button icon={<IconCamera size={19} />} onClick={() => nav('/photo')}>사진 찍고 분석하기</Button>
             <TextLinkRow>
               <TextLink onClick={() => setShowHow(true)} iconRight={<IconInfo size={16} color={C.gray300} />}>어떻게 분석하나요</TextLink>
-              {surveyDone && (
-                <TextLink onClick={() => nav('/survey?edit=1')} iconLeft={<IconPencil size={15} color={C.gray400} />}>건강 정보 수정</TextLink>
-              )}
             </TextLinkRow>
           </>
         }
@@ -201,6 +200,16 @@ export function IntroScreen() {
           </div>
 
           <Collapse open={!focused}>
+            {/* 개인화가 걸려 있다는 신호 + 수정 진입점.
+                질환명은 적지 않는다 — 민감정보라 첫 화면에서 어깨너머로 보이면 안 된다. */}
+            {surveyDone && (
+              <div className="flex items-center justify-between" style={{ marginTop: S.lg, marginBottom: S.xxl }}>
+                <p style={{ ...TXT.caption, color: C.gray500 }}>
+                  {savedCount > 0 ? `건강 정보 ${savedCount}개를 반영하고 있어요` : '건강 정보는 반영하지 않고 있어요'}
+                </p>
+                <InlineAction onClick={() => nav('/survey?edit=1')}>수정</InlineAction>
+              </div>
+            )}
             {history.length > 0 && (
               <div style={{ marginTop: S.lg }}>
                 <SectionLabel action={<InlineAction onClick={clearAll}>모두 지우기</InlineAction>}>최근 본 제품</SectionLabel>
