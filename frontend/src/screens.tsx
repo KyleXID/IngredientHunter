@@ -42,6 +42,7 @@ export function IntroScreen() {
   const nav = useNavigate()
   const { setSource, setPending } = useFlow()
   const savedSurvey = loadSurvey()
+  const surveyDone = savedSurvey.completed
   const savedCount = savedSurvey.conditions.length
   const [query, setQuery] = useState('')
   const [focused, setFocused] = useState(false)
@@ -218,12 +219,14 @@ export function IntroScreen() {
               </div>
             </div>
 
-            {/* 개인화가 걸려 있다는 신호 + 수정 진입점. 고른 게 없으면 알릴 것도 없어 감춘다.
+            {/* 개인화가 걸려 있다는 신호 + 수정 진입점. 아직 고른 게 없으면 왜 넣으면 좋은지로 바꾼다.
                 질환명은 적지 않는다 — 민감정보라 첫 화면에서 어깨너머로 보이면 안 된다. */}
-            {savedCount > 0 && (
+            {surveyDone && (
               <div className="flex items-center justify-between" style={{ marginTop: S.xxl }}>
-                <p style={{ ...TXT.caption, color: C.gray500 }}>건강 정보 {savedCount}개를 반영하고 있어요</p>
-                <InlineAction onClick={() => nav('/survey?edit=1')}>수정</InlineAction>
+                <p style={{ ...TXT.caption, color: C.gray500 }}>
+                  {savedCount > 0 ? `건강 정보 ${savedCount}개를 반영하고 있어요` : '건강 정보를 더하면 결과가 정확해져요'}
+                </p>
+                <InlineAction onClick={() => nav('/survey?edit=1')}>{savedCount > 0 ? '수정' : '추가'}</InlineAction>
               </div>
             )}
           </Collapse>
