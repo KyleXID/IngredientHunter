@@ -3,7 +3,7 @@ import type { ChangeEvent } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { C, F, S, TXT, R, L, VERDICT } from './theme'
 import {
-  Screen, Body, PageTitle, SectionLabel, Button, Collapse, TextLink, Card, Notice,
+  Screen, Body, PageTitle, SectionLabel, InlineAction, ProductChip, Button, Collapse, TextLink, Card, Notice,
   VerdictBadge, CheckBox, ConsentRow, HowItWorksModal, HealthConsentModal, LogConsentModal, ShareModal, summarize,
   rowDivider, ROW_TEXT_INSET,
   IconSearch, IconCamera, IconImage, IconArrowRight, IconChevronLeft, IconCheck,
@@ -204,20 +204,10 @@ export function IntroScreen() {
           <Collapse open={!focused} maxHeight={280}>
             {history.length > 0 && (
               <div style={{ marginTop: S.lg }}>
-                <div className="flex items-center justify-between" style={{ marginBottom: S.md }}>
-                  <p style={{ ...TXT.caption, fontFamily: F.md, fontWeight: 500, color: C.gray400 }}>최근 본 제품</p>
-                  <button onClick={clearAll} className="transition-opacity active:opacity-60" style={{ ...TXT.caption, color: C.gray400 }}>모두 지우기</button>
-                </div>
+                <SectionLabel action={<InlineAction onClick={clearAll}>모두 지우기</InlineAction>}>최근 본 제품</SectionLabel>
                 <div className="flex flex-wrap" style={{ gap: S.sm }}>
                   {history.map((h) => (
-                    <div key={h.reportNo} className="flex items-center" style={{ borderRadius: R.chip, backgroundColor: C.blueSurface }}>
-                      <button onClick={() => pickHistory(h)} className="transition-all duration-150 active:scale-[0.96]" style={{ padding: `${S.sm}px ${S.xs}px ${S.sm}px ${S.md}px`, ...TXT.caption, color: C.blueStrong }}>
-                        {h.name}
-                      </button>
-                      <button onClick={() => removeOne(h.reportNo)} aria-label="삭제" className="flex items-center justify-center transition-opacity active:opacity-60" style={{ padding: `0 ${S.sm}px`, alignSelf: 'stretch' }}>
-                        <IconClose size={13} color={C.blue} />
-                      </button>
-                    </div>
+                    <ProductChip key={h.reportNo} recent name={h.name} onClick={() => pickHistory(h)} onRemove={() => removeOne(h.reportNo)} />
                   ))}
                 </div>
               </div>
@@ -226,9 +216,7 @@ export function IntroScreen() {
               <SectionLabel>인기 제품</SectionLabel>
               <div className="flex flex-wrap" style={{ gap: S.sm }}>
                 {POPULAR.map((p) => (
-                  <button key={p.reportNo} onClick={() => goProduct(p.reportNo, p.name)} className="transition-all duration-150 active:scale-[0.96]" style={{ padding: `${S.sm}px ${S.md}px`, borderRadius: R.chip, backgroundColor: C.gray50, ...TXT.caption, color: C.gray600 }}>
-                    {p.name}
-                  </button>
+                  <ProductChip key={p.reportNo} name={p.name} onClick={() => goProduct(p.reportNo, p.name)} />
                 ))}
               </div>
             </div>

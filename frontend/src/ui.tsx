@@ -122,8 +122,28 @@ export function PageTitle({ title, desc, hero = false }: { title: ReactNode; des
   )
 }
 
-export function SectionLabel({ children }: { children: ReactNode }) {
-  return <p style={{ ...TXT.caption, fontFamily: F.md, fontWeight: 500, color: C.gray400, marginBottom: S.md }}>{children}</p>
+/** 섹션 제목 — action 을 주면 같은 줄 오른쪽에 보조 액션을 붙인다(높이는 라벨 기준 유지) */
+export function SectionLabel({ children, action }: { children: ReactNode; action?: ReactNode }) {
+  return (
+    <div className="flex items-center justify-between" style={{ marginBottom: S.md }}>
+      <p style={{ ...TXT.caption, fontFamily: F.md, fontWeight: 500, color: C.gray400 }}>{children}</p>
+      {action}
+    </div>
+  )
+}
+
+/** 섹션 제목 옆의 작은 보조 액션 — 손가락이 닿을 높이(32)를 확보하되,
+ *  위아래 음수 마진으로 줄 높이는 라벨과 같게 두고 오른쪽 여백만 시각 정렬선에 맞춘다. */
+export function InlineAction({ children, onClick }: { children: ReactNode; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className="shrink-0 flex items-center transition-opacity active:opacity-60"
+      style={{ ...TXT.caption, color: C.gray400, height: 32, margin: `-6px -${S.sm}px -6px 0`, padding: `0 ${S.sm}px` }}
+    >
+      {children}
+    </button>
+  )
 }
 
 export function Button({
@@ -174,6 +194,43 @@ export function Notice({ children, plain = false }: { children: ReactNode; plain
     <div className="flex items-start" style={{ gap: S.sm, backgroundColor: plain ? 'transparent' : C.gray25, borderRadius: plain ? 0 : R.md, padding: plain ? 0 : `${S.lg}px ${S.lg}px` }}>
       <div className="shrink-0" style={{ marginTop: 1 }}><IconInfo size={17} color={C.gray300} /></div>
       <p style={TXT.caption}>{children}</p>
+    </div>
+  )
+}
+
+/** 제품 칩 — 누르면 바로 분석으로 간다. 인기/최근이 같은 상자 규격을 쓰고 면만 다르다.
+ *  · 기본(인기): 회색 면 + 투명 테두리
+ *  · recent(최근 본): 흰 면 + 회색 테두리 — 강조하지 않으면서 구분만 한다.
+ *  투명 테두리를 둬야 두 변형의 높이가 1px씩 어긋나지 않는다. */
+export function ProductChip({ name, recent = false, onClick, onRemove }: {
+  name: string; recent?: boolean; onClick: () => void; onRemove?: () => void
+}) {
+  return (
+    <div
+      className="flex items-center"
+      style={{
+        borderRadius: R.chip,
+        backgroundColor: recent ? C.white : C.gray50,
+        border: `1px solid ${recent ? C.gray100 : 'transparent'}`,
+      }}
+    >
+      <button
+        onClick={onClick}
+        className="transition-all duration-150 active:scale-[0.96]"
+        style={{ padding: `${S.sm}px ${onRemove ? S.xs : S.md}px ${S.sm}px ${S.md}px`, ...TXT.caption, color: C.gray600 }}
+      >
+        {name}
+      </button>
+      {onRemove && (
+        <button
+          onClick={onRemove}
+          aria-label={`${name} 기록 삭제`}
+          className="flex items-center justify-center transition-opacity active:opacity-60"
+          style={{ padding: `0 ${S.sm}px`, alignSelf: 'stretch' }}
+        >
+          <IconClose size={14} color={C.gray400} />
+        </button>
+      )}
     </div>
   )
 }
