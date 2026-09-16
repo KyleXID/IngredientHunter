@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { C, F, S, TXT, R, L, VERDICT } from './theme'
 import type { VerdictKey } from './theme'
@@ -72,8 +72,76 @@ export const IconDocument = ({ size, color = C.blue }: IconProps) => (
 )
 
 /* ═══ PRIMITIVES ═══ */
+
+/** 리스트 행 텍스트의 왼쪽 여백 — 돋보기 아이콘의 SVG 안쪽 여백만큼 밀어
+ *  눈에 보이는 선을 맞춘 값이다. 스페이싱 스케일 밖의 광학 보정이므로 4의 배수가 아니다. */
 export const ROW_TEXT_INSET = 18
+
+/** 리스트 첫 행에는 구분선을 두지 않는다 — 여러 리스트에서 같은 규칙을 쓴다 */
 export const rowDivider = (i: number) => (i === 0 ? 'none' : `1px solid ${C.gray50}`)
+
+/** 제품명 — 평소엔 화면 제목처럼 보이고, 탭하면 입력 필드로 바뀐다.
+ *  값이 있고 비포커스면 연필, 포커스면 전체삭제.
+ *  (인식된 이름이 틀렸을 때 사용자가 바로 고칠 수 있는 자리다) */
+export function ProductNameField({ initialName = '' }: { initialName?: string }) {
+  const [name, setName] = useState(initialName)
+  const [focused, setFocused] = useState(false)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  return (
+    <div
+      className="flex items-center transition-all duration-150"
+      style={{
+        gap: S.sm,
+        // 비포커스일 때 글자가 페이지 좌측 정렬선에 맞도록 안쪽 여백만큼 당겨둔다
+        margin: `0 -${S.md}px`,
+        padding: `${S.sm}px ${S.md}px`,
+        borderRadius: R.md,
+        backgroundColor: focused ? C.white : 'transparent',
+        border: `${focused ? 1.5 : 1}px solid ${focused ? C.blue : 'transparent'}`,
+      }}
+    >
+      <input
+        ref={inputRef}
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
+        onKeyDown={(e) => { if (e.key === 'Enter') inputRef.current?.blur() }}
+        placeholder="제품명을 입력해 주세요"
+        className="flex-1 bg-transparent outline-none min-w-0"
+        style={TXT.productName}
+      />
+      {name && focused && (
+        <button
+          aria-label="전체 삭제"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => setName('')}
+          className="shrink-0 flex items-center justify-center transition-opacity active:opacity-60"
+          style={{ width: 24, height: 24, borderRadius: R.chip, backgroundColor: C.gray100 }}
+        >
+          <IconClose size={14} color={C.gray500} />
+        </button>
+      )}
+      {name && !focused && (
+        <button
+          aria-label="제품명 수정"
+          onClick={() => {
+            const el = inputRef.current
+            if (!el) return
+            el.focus()
+            const end = el.value.length
+            el.setSelectionRange(end, end)
+          }}
+          className="shrink-0 flex items-center justify-center transition-opacity active:opacity-60"
+          style={{ width: 24, height: 24 }}
+        >
+          <IconPencil size={18} color={C.gray300} />
+        </button>
+      )}
+    </div>
+  )
+}
 
 /** 화면 뼈대: 스크롤 본문 + 하단 고정 액션(본문 위에 겹쳐 페이드) */
 export function Screen({ children, footer }: { children: ReactNode; footer?: ReactNode }) {
@@ -156,28 +224,46 @@ export function Button({
       onClick={onClick}
       disabled={disabled}
       className="w-full flex items-center justify-center gap-2 transition-all duration-150 active:scale-[0.98]"
-      style={{ height: L.control, borderRadius: R.md, backgroundColor: bg, color: fg, fontFamily: F.sb, fontWeight: 600, fontSize: 17, letterSpacing: '-0.03em' }}
+      style={{ height: L.control, borderRadius: R.md, backgroundColor: bg, ...TXT.control, color: fg }}
     >
       {icon}{children}
     </button>
   )
 }
 
-export function Collapse({ open, maxHeight, children }: { open: boolean; maxHeight: number; children: ReactNode }) {
+/** 접히는 영역 — 검색 포커스 중에 히어로·칩이 같은 모션으로 사라진다.
+ *  높이는 내용에서 직접 잰다. 고정값을 두면 목록이 늘었을 때 조용히 잘린다. */
+export function Collapse({ open, children }: { open: boolean; children: ReactNode }) {
+  const innerRef = useRef<HTMLDivElement>(null)
+  const [contentH, setContentH] = useState(0)
+  useLayoutEffect(() => {
+    const el = innerRef.current
+    if (!el) return
+    const measure = () => setContentH(el.scrollHeight)
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
   return (
-    <div style={{ maxHeight: open ? maxHeight : 0, opacity: open ? 1 : 0, overflow: 'hidden', transition: 'max-height 280ms cubic-bezier(0.2,0.8,0.2,1), opacity 160ms ease-out' }}>
-      {children}
+    <div style={{ maxHeight: open ? contentH : 0, opacity: open ? 1 : 0, overflow: 'hidden', transition: 'max-height 280ms cubic-bezier(0.2,0.8,0.2,1), opacity 160ms ease-out' }}>
+      {/* flow-root: 자식 margin 이 밖으로 새지 않아야 높이를 정확히 잴 수 있다 */}
+      <div ref={innerRef} style={{ display: 'flow-root' }}>{children}</div>
     </div>
   )
 }
 
+/** 하단 보조 링크 한 줄 — 링크가 하나든 둘이든 이 줄에 담는다 */
+export function TextLinkRow({ children }: { children: ReactNode }) {
+  return <div className="flex items-center justify-center" style={{ gap: S.md, marginTop: S.md }}>{children}</div>
+}
+
+/** 하단 보조 링크 (뒤로가기 / 어떻게 분석하나요 …) — 반드시 TextLinkRow 안에 둔다 */
 export function TextLink({ children, onClick, iconLeft, iconRight }: { children: ReactNode; onClick: () => void; iconLeft?: ReactNode; iconRight?: ReactNode }) {
   return (
-    <div className="flex justify-center" style={{ marginTop: S.md }}>
-      <button onClick={onClick} className="flex items-center gap-1.5 transition-opacity active:opacity-60" style={{ ...TXT.label, color: C.gray500, height: 40, padding: `0 ${S.md}px` }}>
-        {iconLeft}{children}{iconRight}
-      </button>
-    </div>
+    <button onClick={onClick} className="flex items-center gap-1.5 transition-opacity active:opacity-60" style={{ ...TXT.label, color: C.gray500, height: 40, padding: `0 ${S.md}px` }}>
+      {iconLeft}{children}{iconRight}
+    </button>
   )
 }
 
@@ -392,7 +478,7 @@ export function ShareModal({ verdict, productName, total, ingredients, onClose }
     <Sheet title="이미지로 공유" onClose={onClose} footer={<Button icon={<IconDownload size={19} />} onClick={onClose}>이미지 저장</Button>}>
       <div style={{ borderRadius: R.lg, overflow: 'hidden', border: `1px solid ${C.gray100}` }}>
         <div style={{ backgroundColor: v.surface, padding: `${S.xxl}px ${S.xl}px` }}>
-          <p style={{ ...TXT.title, fontSize: 22 }}>{productName}</p>
+          <p style={TXT.productName}>{productName}</p>
           <p style={{ ...TXT.caption, color: v.toneText, marginTop: S.xs }}>{summarize(total, ingredients)}</p>
         </div>
         <div style={{ padding: `${S.lg}px ${S.xl}px ${S.xl}px`, backgroundColor: C.white }}>

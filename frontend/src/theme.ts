@@ -26,14 +26,17 @@ export const F = {
 } as const
 
 /** Spacing — 4의 배수 */
-export const S = { xs: 4, sm: 8, md: 12, lg: 16, xl: 20, xxl: 24, x3: 32, x4: 40 } as const
+export const S = { xs: 4, sm: 8, md: 12, lg: 16, xl: 20, xxl: 24, x3: 32 } as const
 
-/** Type scale — 7단계 */
+/** Type scale — 9단계. 이 밖의 크기는 쓰지 않는다.
+ *  control·productName 은 컨트롤과 제품명 전용 단계다. 인라인으로 크기를 덮어쓰지 말 것. */
 export const TXT = {
   hero: { fontFamily: F.sb, fontWeight: 600, fontSize: 32, lineHeight: 1.3, letterSpacing: '-0.05em', color: C.gray900 },
   title: { fontFamily: F.sb, fontWeight: 600, fontSize: 24, lineHeight: 1.38, letterSpacing: '-0.035em', color: C.gray900 },
+  productName: { fontFamily: F.sb, fontWeight: 600, fontSize: 22, lineHeight: 1.38, letterSpacing: '-0.035em', color: C.gray900 },
   section: { fontFamily: F.sb, fontWeight: 600, fontSize: 19, lineHeight: 1.42, letterSpacing: '-0.03em', color: C.gray900 },
   strong: { fontFamily: F.sb, fontWeight: 600, fontSize: 16, lineHeight: 1.45, letterSpacing: '-0.03em', color: C.gray900 },
+  control: { fontFamily: F.sb, fontWeight: 600, fontSize: 17, lineHeight: 1.45, letterSpacing: '-0.03em', color: C.gray900 },
   label: { fontFamily: F.md, fontWeight: 500, fontSize: 15, lineHeight: 1.45, letterSpacing: '-0.02em', color: C.gray700 },
   body: { fontFamily: F.rg, fontWeight: 400, fontSize: 15, lineHeight: 1.62, letterSpacing: '-0.02em', color: C.gray600 },
   caption: { fontFamily: F.rg, fontWeight: 400, fontSize: 13, lineHeight: 1.55, letterSpacing: '-0.01em', color: C.gray500 },

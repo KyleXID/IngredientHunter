@@ -3,7 +3,7 @@ import type { ChangeEvent } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { C, F, S, TXT, R, L, VERDICT } from './theme'
 import {
-  Screen, Body, PageTitle, SectionLabel, InlineAction, ProductChip, Button, Collapse, TextLink, Card, Notice,
+  Screen, Body, PageTitle, SectionLabel, InlineAction, ProductChip, ProductNameField, Button, Collapse, TextLink, TextLinkRow, Card, Notice,
   VerdictBadge, CheckBox, ConsentRow, HowItWorksModal, HealthConsentModal, LogConsentModal, ShareModal, summarize,
   rowDivider, ROW_TEXT_INSET,
   IconSearch, IconCamera, IconImage, IconArrowRight, IconChevronLeft, IconCheck,
@@ -99,7 +99,7 @@ export function IntroScreen() {
     }
   }, [showDropdown])
 
-  const goProduct =(reportNo: string, name: string) => {
+  const goProduct = (reportNo: string, name: string) => {
     addHistory({ reportNo, name })
     const s = loadSurvey()
     if (s.completed) {
@@ -127,21 +127,15 @@ export function IntroScreen() {
         footer={
           <>
             <Button icon={<IconCamera size={19} />} onClick={() => nav('/photo')}>사진 찍고 분석하기</Button>
-            <div className="flex items-center justify-center" style={{ gap: S.md, marginTop: S.md }}>
-              <button onClick={() => setShowHow(true)} className="flex items-center gap-1.5 transition-opacity active:opacity-60" style={{ ...TXT.label, color: C.gray500, height: 40, padding: `0 ${S.sm}px` }}>
-                어떻게 분석하나요<IconInfo size={16} color={C.gray300} />
-              </button>
-              {surveyDone && (
-                <button onClick={() => nav('/survey?edit=1')} className="flex items-center transition-opacity active:opacity-60" style={{ ...TXT.label, color: C.gray500, height: 40, padding: `0 ${S.sm}px` }}>
-                  건강 정보 수정
-                </button>
-              )}
-            </div>
+            <TextLinkRow>
+              <TextLink onClick={() => setShowHow(true)} iconRight={<IconInfo size={16} color={C.gray300} />}>어떻게 분석하나요</TextLink>
+              {surveyDone && <TextLink onClick={() => nav('/survey?edit=1')}>건강 정보 수정</TextLink>}
+            </TextLinkRow>
           </>
         }
       >
         <Body>
-          <Collapse open={!focused} maxHeight={240}>
+          <Collapse open={!focused}>
             <PageTitle
               hero
               title={
@@ -169,7 +163,7 @@ export function IntroScreen() {
                 onBlur={() => setTimeout(() => setFocused(false), 150)}
                 placeholder="제품명으로 검색"
                 className="flex-1 bg-transparent outline-none min-w-0"
-                style={{ ...TXT.strong, fontSize: 17 }}
+                style={TXT.control}
               />
               {query && (
                 <button aria-label="검색어 지우기" onMouseDown={(e) => e.preventDefault()} onClick={() => setQuery('')} className="shrink-0 flex items-center justify-center transition-opacity active:opacity-60" style={{ width: 24, height: 24, borderRadius: R.chip, backgroundColor: C.gray100 }}>
@@ -189,7 +183,7 @@ export function IntroScreen() {
                       <IconArrowRight size={16} color={C.gray300} />
                     </button>
                   ))}
-                  <div className="flex items-center justify-between" style={{ gap: S.md, padding: S.lg, paddingLeft: ROW_TEXT_INSET, borderTop: results.length > 0 ? `1px solid ${C.gray50}` : 'none' }}>
+                  <div className="flex items-center justify-between" style={{ gap: S.md, padding: S.lg, paddingLeft: ROW_TEXT_INSET, borderTop: rowDivider(results.length) }}>
                     <p style={TXT.label}>{results.length > 0 ? '찾는 제품이 없나요?' : '찾는 제품이 없어요'}</p>
                     <button className="shrink-0 flex items-center transition-opacity active:opacity-60" style={{ gap: S.xs, padding: `${S.sm}px ${S.md}px`, borderRadius: R.chip, backgroundColor: C.blueSurface }} onMouseDown={(e) => e.preventDefault()} onClick={() => nav('/photo')}>
                       <IconCamera size={15} color={C.blue} />
@@ -201,7 +195,7 @@ export function IntroScreen() {
             )}
           </div>
 
-          <Collapse open={!focused} maxHeight={280}>
+          <Collapse open={!focused}>
             {history.length > 0 && (
               <div style={{ marginTop: S.lg }}>
                 <SectionLabel action={<InlineAction onClick={clearAll}>모두 지우기</InlineAction>}>최근 본 제품</SectionLabel>
@@ -291,7 +285,7 @@ export function SurveyScreen() {
               </ConsentRow>
             </div>
             <Button disabled={!canProceed} onClick={submit}>{ctaLabel}</Button>
-            <TextLink onClick={() => nav(-1)} iconLeft={<IconChevronLeft size={16} color={C.gray400} />}>뒤로가기</TextLink>
+            <TextLinkRow><TextLink onClick={() => nav(-1)} iconLeft={<IconChevronLeft size={16} color={C.gray400} />}>뒤로가기</TextLink></TextLinkRow>
           </>
         }
       >
@@ -366,7 +360,7 @@ export function PhotoGuideScreen() {
             <Button variant="secondary" icon={<IconImage size={19} color={C.gray600} />} onClick={() => fileRef.current?.click()}>앨범에서 고르기</Button>
             <Button icon={<IconCamera size={19} />} onClick={() => fileRef.current?.click()}>사진 찍기</Button>
           </div>
-          <TextLink onClick={() => nav('/')} iconLeft={<IconChevronLeft size={16} color={C.gray400} />}>뒤로가기</TextLink>
+          <TextLinkRow><TextLink onClick={() => nav('/')} iconLeft={<IconChevronLeft size={16} color={C.gray400} />}>뒤로가기</TextLink></TextLinkRow>
         </>
       }
     >
@@ -452,6 +446,8 @@ export function LoadingScreen() {
 
 /* ═══ 결과: flow.result 렌더 ═══ */
 function IngredientRiskCard({ data, index = 0 }: { data: IngredientCard; index?: number }) {
+  const rows = [{ k: '하루 기준', v: data.dose }, { k: '근거', v: data.evidence }]
+    .filter((row): row is { k: string; v: string } => !!row.v?.trim())
   return (
     <div className="anim-fade-up" style={{ animationDelay: `${index * 70}ms` }}>
       <Card>
@@ -460,14 +456,17 @@ function IngredientRiskCard({ data, index = 0 }: { data: IngredientCard; index?:
           <VerdictBadge verdict={data.type} />
         </div>
         {data.effect && <p style={{ ...TXT.body, marginBottom: S.lg }}>{data.effect}</p>}
-        <div style={{ backgroundColor: C.gray25, borderRadius: R.sm, padding: S.lg }}>
-          {[{ k: '하루 기준', v: data.dose }, { k: '근거', v: data.evidence }].map((row, i) => (
-            <div key={row.k} style={{ marginTop: i === 0 ? 0 : S.md }}>
-              <p style={{ ...TXT.caption, color: C.gray400, marginBottom: 2 }}>{row.k}</p>
-              <p style={{ ...TXT.caption, color: C.gray700 }}>{row.v ?? '-'}</p>
-            </div>
-          ))}
-        </div>
+        {/* 값이 없는 줄은 '-' 로 채우지 않고 빼둔다. 둘 다 없으면 상자도 그리지 않는다 */}
+        {rows.length > 0 && (
+          <div style={{ backgroundColor: C.gray25, borderRadius: R.sm, padding: S.lg }}>
+            {rows.map((row, i) => (
+              <div key={row.k} style={{ marginTop: i === 0 ? 0 : S.md }}>
+                <p style={{ ...TXT.caption, color: C.gray400, marginBottom: 2 }}>{row.k}</p>
+                <p style={{ ...TXT.caption, color: C.gray700 }}>{row.v}</p>
+              </div>
+            ))}
+          </div>
+        )}
       </Card>
     </div>
   )
@@ -496,7 +495,8 @@ export function ResultScreen() {
         }
       >
         <Body>
-          <h1 style={{ ...TXT.title, fontSize: 22 }}>{result.productName}</h1>
+          {/* key: 다른 결과로 바뀌면 입력 상태를 새 제품명으로 다시 시작한다 */}
+          <ProductNameField key={result.productName} initialName={result.productName} />
           <div className="flex items-center" style={{ gap: S.md, marginTop: S.xl, padding: `${S.lg}px ${S.xl}px`, borderRadius: R.lg, backgroundColor: v.surface }}>
             <div className="shrink-0 anim-pop"><VIcon size={22} color={v.tone} /></div>
             <div className="flex-1 min-w-0">
