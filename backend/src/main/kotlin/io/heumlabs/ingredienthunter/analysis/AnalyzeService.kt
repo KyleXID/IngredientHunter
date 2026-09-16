@@ -182,9 +182,8 @@ class AnalyzeService(
             URI.create("https://generativelanguage.googleapis.com/v1beta/models/$geminiModel:generateContent"),
         ).header("x-goog-api-key", geminiKey).header("content-type", "application/json")
             .POST(HttpRequest.BodyPublishers.ofString(body)).build()
-        val response = http.send(request, HttpResponse.BodyHandlers.ofString())
-        if (response.statusCode() !in 200..299) { log.warn("gemini {}", response.statusCode()); return null }
-        val root = json.readValue(response.body(), Map::class.java)
+        val respBody = sendWithRetry(request, "gemini") ?: return null
+        val root = json.readValue(respBody, Map::class.java)
         val parts = (((root["candidates"] as? List<*>)?.firstOrNull() as? Map<*, *>)?.get("content") as? Map<*, *>)
             ?.get("parts") as? List<*>
         return parts?.filterIsInstance<Map<*, *>>()?.firstOrNull { it["text"] != null }?.get("text") as? String
@@ -209,11 +208,38 @@ class AnalyzeService(
             .header("x-api-key", anthropicKey).header("anthropic-version", "2023-06-01")
             .header("content-type", "application/json")
             .POST(HttpRequest.BodyPublishers.ofString(body)).build()
-        val response = http.send(request, HttpResponse.BodyHandlers.ofString())
-        if (response.statusCode() !in 200..299) { log.warn("anthropic {}", response.statusCode()); return null }
-        val root = json.readValue(response.body(), Map::class.java)
+        val respBody = sendWithRetry(request, "anthropic") ?: return null
+        val root = json.readValue(respBody, Map::class.java)
         return (root["content"] as? List<*>)?.filterIsInstance<Map<*, *>>()
             ?.firstOrNull { it["type"] == "text" }?.get("text") as? String
+    }
+
+    /**
+     * 429/5xx(일시적 과부하)면 지수 백오프로 재시도. 최종 실패 시 응답 본문 앞부분까지 로깅.
+     * ponytail: 요청 스레드에서 Thread.sleep 블로킹 — 단일 사용자 데모엔 충분. 동시성 커지면 WebClient 비동기로.
+     */
+    private fun sendWithRetry(request: HttpRequest, who: String): String? {
+        var attempt = 0
+        while (true) {
+            val response = try {
+                http.send(request, HttpResponse.BodyHandlers.ofString())
+            } catch (e: Exception) {
+                if (attempt++ < MAX_RETRY) {
+                    log.warn("{} 요청 실패({}) — 재시도 {}/{}", who, e.message, attempt, MAX_RETRY); backoff(attempt); continue
+                }
+                log.warn("{} 요청 실패({}) — 재시도 소진", who, e.message); return null
+            }
+            val sc = response.statusCode()
+            if (sc in 200..299) return response.body()
+            if (sc in RETRYABLE && attempt++ < MAX_RETRY) {
+                log.warn("{} {} — 재시도 {}/{}: {}", who, sc, attempt, MAX_RETRY, response.body().take(200)); backoff(attempt); continue
+            }
+            log.warn("{} {} 실패: {}", who, sc, response.body().take(300)); return null
+        }
+    }
+
+    private fun backoff(attempt: Int) {
+        runCatching { Thread.sleep(600L * attempt) }
     }
 
     private fun stripFence(text: String): String {
@@ -227,6 +253,10 @@ class AnalyzeService(
             "너는 식품 전성분표 이미지에서 정보만 추출하는 도우미다. 위험도 판정·평가는 절대 하지 않는다. " +
                 "(1) 제품명 추정, (2) 원재료명을 표기 순서대로 추출한다. " +
                 "설명·코드펜스 없이 JSON만 응답한다: {\"product\":\"제품명\",\"ingredients\":[\"원재료명\", ...]}"
+
+        // LLM 호출 재시도: 429/5xx 는 일시적 과부하로 보고 최대 MAX_RETRY 회 재시도
+        private const val MAX_RETRY = 2
+        private val RETRYABLE = setOf(429, 500, 502, 503, 504)
 
         // 키 미설정 시 데모 — 실제 판정 로직을 그대로 태운다(제로 콜라류 라벨)
         private const val DEMO_PRODUCT = "데모 제로 콜라"
