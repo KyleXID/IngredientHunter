@@ -131,6 +131,16 @@ export function IntroScreen() {
       <Screen
         footer={
           <>
+            {/* 개인화가 걸려 있다는 신호 + 수정 진입점. 하단 보조 링크와 같은 무게로 둔다.
+                질환명은 적지 않는다 — 민감정보라 첫 화면에서 어깨너머로 보이면 안 된다. */}
+            {surveyDone && (
+              <div className="flex items-center justify-between" style={{ marginBottom: S.md }}>
+                <p style={{ ...TXT.label, color: C.gray500 }}>
+                  {savedCount > 0 ? `건강 정보 ${savedCount}개를 반영하고 있어요` : '건강 정보를 더하면 결과가 정확해져요'}
+                </p>
+                <InlineAction onClick={() => nav('/survey?edit=1')}>{savedCount > 0 ? '수정' : '추가'}</InlineAction>
+              </div>
+            )}
             <Button icon={<IconCamera size={19} />} onClick={() => nav('/photo')}>사진 찍고 분석하기</Button>
             <TextLinkRow>
               <TextLink onClick={() => setShowHow(true)} iconRight={<IconInfo size={16} color={C.gray300} />}>어떻게 분석하나요</TextLink>
@@ -219,16 +229,6 @@ export function IntroScreen() {
               </div>
             </div>
 
-            {/* 개인화가 걸려 있다는 신호 + 수정 진입점. 아직 고른 게 없으면 왜 넣으면 좋은지로 바꾼다.
-                질환명은 적지 않는다 — 민감정보라 첫 화면에서 어깨너머로 보이면 안 된다. */}
-            {surveyDone && (
-              <div className="flex items-center justify-between" style={{ marginTop: S.xxl }}>
-                <p style={{ ...TXT.caption, color: C.gray500 }}>
-                  {savedCount > 0 ? `건강 정보 ${savedCount}개를 반영하고 있어요` : '건강 정보를 더하면 결과가 정확해져요'}
-                </p>
-                <InlineAction onClick={() => nav('/survey?edit=1')}>{savedCount > 0 ? '수정' : '추가'}</InlineAction>
-              </div>
-            )}
           </Collapse>
         </Body>
       </Screen>
