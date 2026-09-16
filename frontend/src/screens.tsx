@@ -294,12 +294,16 @@ export function SurveyScreen() {
     setSelected(next); setNoneGroups(nextNone)
   }
 
+  // 모든 그룹에 답해야 진행할 수 있다('해당없음'도 답으로 친다)
+  const unanswered = groups.find((g) => !isDone(g))
   // 건강 정보 동의는 건강상태를 골랐을 때만 필요하고 그땐 필수. 사용 기록 동의는 선택(버튼 안 막음).
   const picked = selected.size > 0
-  const canProceed = !picked || agreeHealth
-  const ctaLabel = !canProceed
-    ? '건강 정보 활용 동의에 체크해 주세요'
-    : edit ? '저장' : picked ? `${selected.size}개 선택 · 분석 시작` : '분석하기'
+  const canProceed = !unanswered && (!picked || agreeHealth)
+  const ctaLabel = unanswered
+    ? `${unanswered.group} 항목을 골라주세요`
+    : !canProceed
+      ? '건강 정보 활용 동의에 체크해 주세요'
+      : edit ? '저장' : picked ? `${selected.size}개 선택 · 분석 시작` : '분석하기'
 
   const submit = () => {
     // noneGroups 는 화면 전용 — conditions 에 섞이지 않는다
@@ -338,7 +342,7 @@ export function SurveyScreen() {
         }
       >
         <Body>
-          <PageTitle title={<>해당하는 건강 상태를<br />모두 골라주세요</>} desc="고른 상태에 맞춰 조심해야 할 성분을 더 정확하게 찾아드려요. 해당하는 항목이 없으면 고르지 않아도 괜찮아요." />
+          <PageTitle title={<>해당하는 건강 상태를<br />모두 골라주세요</>} desc="고른 상태에 맞춰 조심해야 할 성분을 더 정확하게 찾아드려요. 해당하는 항목이 없으면 '해당없음'을 골라주세요." />
           {visible.map((g, gi) => {
             const single = SINGLE_CHOICE_GROUPS.includes(g.group)
             const Mark = single ? RadioMark : CheckBox
@@ -352,10 +356,15 @@ export function SurveyScreen() {
               >
                 <SectionLabel>{g.group}</SectionLabel>
                 <Card padded={false}>
+                  {/* '해당없음'이 맨 위 — 해당 사항이 없는 사람이 가장 먼저 빠져나갈 수 있게 */}
+                  <button onClick={() => pickNone(g.group)} className="w-full text-left flex items-center transition-colors duration-150" style={{ gap: S.md, padding: `${S.lg}px ${S.lg}px`, borderTop: rowDivider(0), backgroundColor: noneOn ? C.blueSurface : C.white }}>
+                    <Mark on={noneOn} size={22} />
+                    <p style={{ ...TXT.label, color: noneOn ? C.blueStrong : C.gray900 }}>해당없음</p>
+                  </button>
                   {g.items.map(({ id, label, desc }, i) => {
                     const on = selected.has(id)
                     return (
-                      <button key={id} onClick={() => pickItem(g.group, id)} className="w-full text-left flex items-center transition-colors duration-150" style={{ gap: S.md, padding: `${S.lg}px ${S.lg}px`, borderTop: rowDivider(i), backgroundColor: on ? C.blueSurface : C.white }}>
+                      <button key={id} onClick={() => pickItem(g.group, id)} className="w-full text-left flex items-center transition-colors duration-150" style={{ gap: S.md, padding: `${S.lg}px ${S.lg}px`, borderTop: rowDivider(i + 1), backgroundColor: on ? C.blueSurface : C.white }}>
                         <Mark on={on} size={22} />
                         <div className="flex-1 min-w-0">
                           <p style={{ ...TXT.label, color: on ? C.blueStrong : C.gray900 }}>{label}</p>
@@ -364,10 +373,6 @@ export function SurveyScreen() {
                       </button>
                     )
                   })}
-                  <button onClick={() => pickNone(g.group)} className="w-full text-left flex items-center transition-colors duration-150" style={{ gap: S.md, padding: `${S.lg}px ${S.lg}px`, borderTop: rowDivider(g.items.length), backgroundColor: noneOn ? C.blueSurface : C.white }}>
-                    <Mark on={noneOn} size={22} />
-                    <p style={{ ...TXT.label, color: noneOn ? C.blueStrong : C.gray900 }}>해당없음</p>
-                  </button>
                 </Card>
               </div>
             )
