@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { C, F, S, TXT, R, L, VERDICT } from './theme'
 import type { VerdictKey } from './theme'
@@ -72,8 +72,76 @@ export const IconDocument = ({ size, color = C.blue }: IconProps) => (
 )
 
 /* ═══ PRIMITIVES ═══ */
+
+/** 리스트 행 텍스트의 왼쪽 여백 — 돋보기 아이콘의 SVG 안쪽 여백만큼 밀어
+ *  눈에 보이는 선을 맞춘 값이다. 스페이싱 스케일 밖의 광학 보정이므로 4의 배수가 아니다. */
 export const ROW_TEXT_INSET = 18
+
+/** 리스트 첫 행에는 구분선을 두지 않는다 — 여러 리스트에서 같은 규칙을 쓴다 */
 export const rowDivider = (i: number) => (i === 0 ? 'none' : `1px solid ${C.gray50}`)
+
+/** 제품명 — 평소엔 화면 제목처럼 보이고, 탭하면 입력 필드로 바뀐다.
+ *  값이 있고 비포커스면 연필, 포커스면 전체삭제.
+ *  (인식된 이름이 틀렸을 때 사용자가 바로 고칠 수 있는 자리다) */
+export function ProductNameField({ initialName = '' }: { initialName?: string }) {
+  const [name, setName] = useState(initialName)
+  const [focused, setFocused] = useState(false)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  return (
+    <div
+      className="flex items-center transition-all duration-150"
+      style={{
+        gap: S.sm,
+        // 비포커스일 때 글자가 페이지 좌측 정렬선에 맞도록 안쪽 여백만큼 당겨둔다
+        margin: `0 -${S.md}px`,
+        padding: `${S.sm}px ${S.md}px`,
+        borderRadius: R.md,
+        backgroundColor: focused ? C.white : 'transparent',
+        border: `${focused ? 1.5 : 1}px solid ${focused ? C.blue : 'transparent'}`,
+      }}
+    >
+      <input
+        ref={inputRef}
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
+        onKeyDown={(e) => { if (e.key === 'Enter') inputRef.current?.blur() }}
+        placeholder="제품명을 입력해 주세요"
+        className="flex-1 bg-transparent outline-none min-w-0"
+        style={TXT.productName}
+      />
+      {name && focused && (
+        <button
+          aria-label="전체 삭제"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => setName('')}
+          className="shrink-0 flex items-center justify-center transition-opacity active:opacity-60"
+          style={{ width: 24, height: 24, borderRadius: R.chip, backgroundColor: C.gray100 }}
+        >
+          <IconClose size={14} color={C.gray500} />
+        </button>
+      )}
+      {name && !focused && (
+        <button
+          aria-label="제품명 수정"
+          onClick={() => {
+            const el = inputRef.current
+            if (!el) return
+            el.focus()
+            const end = el.value.length
+            el.setSelectionRange(end, end)
+          }}
+          className="shrink-0 flex items-center justify-center transition-opacity active:opacity-60"
+          style={{ width: 24, height: 24 }}
+        >
+          <IconPencil size={18} color={C.gray300} />
+        </button>
+      )}
+    </div>
+  )
+}
 
 /** 화면 뼈대: 스크롤 본문 + 하단 고정 액션(본문 위에 겹쳐 페이드) */
 export function Screen({ children, footer }: { children: ReactNode; footer?: ReactNode }) {
@@ -122,8 +190,28 @@ export function PageTitle({ title, desc, hero = false }: { title: ReactNode; des
   )
 }
 
-export function SectionLabel({ children }: { children: ReactNode }) {
-  return <p style={{ ...TXT.caption, fontFamily: F.md, fontWeight: 500, color: C.gray400, marginBottom: S.md }}>{children}</p>
+/** 섹션 제목 — action 을 주면 같은 줄 오른쪽에 보조 액션을 붙인다(높이는 라벨 기준 유지) */
+export function SectionLabel({ children, action }: { children: ReactNode; action?: ReactNode }) {
+  return (
+    <div className="flex items-center justify-between" style={{ marginBottom: S.md }}>
+      <p style={{ ...TXT.caption, fontFamily: F.md, fontWeight: 500, color: C.gray400 }}>{children}</p>
+      {action}
+    </div>
+  )
+}
+
+/** 섹션 제목 옆의 작은 보조 액션 — 손가락이 닿을 높이(32)를 확보하되,
+ *  위아래 음수 마진으로 줄 높이는 라벨과 같게 두고 오른쪽 여백만 시각 정렬선에 맞춘다. */
+export function InlineAction({ children, onClick }: { children: ReactNode; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className="shrink-0 flex items-center transition-opacity active:opacity-60"
+      style={{ ...TXT.caption, color: C.gray400, height: 32, margin: `-6px -${S.sm}px -6px 0`, padding: `0 ${S.sm}px` }}
+    >
+      {children}
+    </button>
+  )
 }
 
 export function Button({
@@ -136,28 +224,46 @@ export function Button({
       onClick={onClick}
       disabled={disabled}
       className="w-full flex items-center justify-center gap-2 transition-all duration-150 active:scale-[0.98]"
-      style={{ height: L.control, borderRadius: R.md, backgroundColor: bg, color: fg, fontFamily: F.sb, fontWeight: 600, fontSize: 17, letterSpacing: '-0.03em' }}
+      style={{ height: L.control, borderRadius: R.md, backgroundColor: bg, ...TXT.control, color: fg }}
     >
       {icon}{children}
     </button>
   )
 }
 
-export function Collapse({ open, maxHeight, children }: { open: boolean; maxHeight: number; children: ReactNode }) {
+/** 접히는 영역 — 검색 포커스 중에 히어로·칩이 같은 모션으로 사라진다.
+ *  높이는 내용에서 직접 잰다. 고정값을 두면 목록이 늘었을 때 조용히 잘린다. */
+export function Collapse({ open, children }: { open: boolean; children: ReactNode }) {
+  const innerRef = useRef<HTMLDivElement>(null)
+  const [contentH, setContentH] = useState(0)
+  useLayoutEffect(() => {
+    const el = innerRef.current
+    if (!el) return
+    const measure = () => setContentH(el.scrollHeight)
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
   return (
-    <div style={{ maxHeight: open ? maxHeight : 0, opacity: open ? 1 : 0, overflow: 'hidden', transition: 'max-height 280ms cubic-bezier(0.2,0.8,0.2,1), opacity 160ms ease-out' }}>
-      {children}
+    <div style={{ maxHeight: open ? contentH : 0, opacity: open ? 1 : 0, overflow: 'hidden', transition: 'max-height 280ms cubic-bezier(0.2,0.8,0.2,1), opacity 160ms ease-out' }}>
+      {/* flow-root: 자식 margin 이 밖으로 새지 않아야 높이를 정확히 잴 수 있다 */}
+      <div ref={innerRef} style={{ display: 'flow-root' }}>{children}</div>
     </div>
   )
 }
 
+/** 하단 보조 링크 한 줄 — 링크가 하나든 둘이든 이 줄에 담는다 */
+export function TextLinkRow({ children }: { children: ReactNode }) {
+  return <div className="flex items-center justify-center" style={{ gap: S.md, marginTop: S.md }}>{children}</div>
+}
+
+/** 하단 보조 링크 (뒤로가기 / 어떻게 분석하나요 …) — 반드시 TextLinkRow 안에 둔다 */
 export function TextLink({ children, onClick, iconLeft, iconRight }: { children: ReactNode; onClick: () => void; iconLeft?: ReactNode; iconRight?: ReactNode }) {
   return (
-    <div className="flex justify-center" style={{ marginTop: S.md }}>
-      <button onClick={onClick} className="flex items-center gap-1.5 transition-opacity active:opacity-60" style={{ ...TXT.label, color: C.gray500, height: 40, padding: `0 ${S.md}px` }}>
-        {iconLeft}{children}{iconRight}
-      </button>
-    </div>
+    <button onClick={onClick} className="flex items-center gap-1.5 transition-opacity active:opacity-60" style={{ ...TXT.label, color: C.gray500, height: 40, padding: `0 ${S.md}px` }}>
+      {iconLeft}{children}{iconRight}
+    </button>
   )
 }
 
@@ -174,6 +280,47 @@ export function Notice({ children, plain = false }: { children: ReactNode; plain
     <div className="flex items-start" style={{ gap: S.sm, backgroundColor: plain ? 'transparent' : C.gray25, borderRadius: plain ? 0 : R.md, padding: plain ? 0 : `${S.lg}px ${S.lg}px` }}>
       <div className="shrink-0" style={{ marginTop: 1 }}><IconInfo size={17} color={C.gray300} /></div>
       <p style={TXT.caption}>{children}</p>
+    </div>
+  )
+}
+
+/** 제품 칩 — 누르면 바로 분석으로 간다. 인기/최근이 같은 상자 규격을 쓰고 면만 다르다.
+ *  · 기본(인기): 회색 면 + 투명 테두리
+ *  · recent(최근 본): 흰 면 + 회색 테두리 — 강조하지 않으면서 구분만 한다.
+ *  투명 테두리를 둬야 두 변형의 높이가 1px씩 어긋나지 않는다. */
+export function ProductChip({ name, recent = false, onClick, onRemove }: {
+  name: string; recent?: boolean; onClick: () => void; onRemove?: () => void
+}) {
+  return (
+    <div
+      className="flex items-center"
+      style={{
+        borderRadius: R.chip,
+        backgroundColor: recent ? C.white : C.gray50,
+        border: `1px solid ${recent ? C.gray100 : 'transparent'}`,
+      }}
+    >
+      <button
+        onClick={onClick}
+        className="transition-all duration-150 active:scale-[0.96]"
+        style={{ padding: `${S.sm}px ${onRemove ? 0 : S.md}px ${S.sm}px ${S.md}px`, ...TXT.caption, color: C.gray600 }}
+      >
+        {name}
+      </button>
+      {onRemove && (
+        /* 여백은 아이콘 자체의 빈 공간(14 박스 안 글리프는 약 7)을 빼고 잡아야
+           눈에 보이는 간격이 글자쪽 8 · 칩 끝 13 으로 읽힌다.
+           패딩을 4씩 더 주고 음수 마진으로 되돌려, 보이는 자리는 그대로 두고
+           손가락이 닿는 범위만 26 → 34 로 넓힌다. */
+        <button
+          onClick={onRemove}
+          aria-label={`${name} 기록 삭제`}
+          className="flex items-center justify-center transition-opacity active:opacity-60"
+          style={{ padding: `0 ${S.md}px 0 ${S.sm}px`, margin: `0 -${S.xs}px 0 -${S.xs}px`, alignSelf: 'stretch' }}
+        >
+          <IconClose size={14} color={C.gray400} />
+        </button>
+      )}
     </div>
   )
 }
@@ -215,6 +362,15 @@ export function CheckBox({ on, size = 22 }: { on: boolean; size?: number }) {
   )
 }
 
+/** 라디오 표식 — 하나만 고르는 그룹에서 체크박스 대신 쓴다. 크기·색은 체크박스와 같다. */
+export function RadioMark({ on, size = 22 }: { on: boolean; size?: number }) {
+  return (
+    <div className="shrink-0 flex items-center justify-center transition-all duration-150" style={{ width: size, height: size, borderRadius: R.chip, backgroundColor: on ? C.blue : C.white, border: `${on ? 1.5 : 1}px solid ${on ? C.blue : C.gray200}` }}>
+      {on && <div className="anim-pop" style={{ width: size / 4, height: size / 4, borderRadius: R.chip, backgroundColor: C.white }} />}
+    </div>
+  )
+}
+
 /** 동의 한 줄 — 체크박스 + 필수/선택 배지 + 문구 + 자세히 보기 */
 export function ConsentRow({ on, onToggle, children, onDetail, required = false }: { on: boolean; onToggle: () => void; children: ReactNode; onDetail?: () => void; required?: boolean }) {
   return (
@@ -229,6 +385,18 @@ export function ConsentRow({ on, onToggle, children, onDetail, required = false 
           자세히 보기<IconInfo size={15} color={C.gray300} />
         </button>
       )}
+    </div>
+  )
+}
+
+/** 결과 안내 문구 묶음 — 넘겨준 순서대로 쌓는다(정보 제한 > 다이어트 효과 없음 > 카페인).
+ *  빈 값은 건너뛰고, 남는 게 없으면 자리도 차지하지 않는다. */
+export function NoticeStack({ items }: { items: (string | null | undefined | false)[] }) {
+  const list = items.filter((t): t is string => !!t)
+  if (list.length === 0) return null
+  return (
+    <div style={{ marginTop: S.lg, display: 'flex', flexDirection: 'column', gap: S.md }}>
+      {list.map((t) => <Notice plain key={t}>{t}</Notice>)}
     </div>
   )
 }
@@ -303,8 +471,9 @@ export function HealthConsentModal({ onClose }: { onClose: () => void }) {
       items={[
         { title: '무엇을 받나요', desc: '직접 고른 건강 상태예요. 당뇨병, 고혈압, 임신 여부 같은 항목이에요.' },
         { title: '어디에 쓰나요', desc: '고른 상태에 맞춰 성분 위험도를 판단하고, 더 정확한 결과를 보여드리는 데 써요.' },
-        { title: '언제까지 갖고 있나요', desc: '결과를 보여드리면 바로 지워요. 사용 기록 활용에도 동의했다면, 그 기록에 남는 부분은 6개월 보관해요.' },
-        { title: '동의하지 않으면요', desc: '건강 상태에 맞춘 결과를 만들 수 없어요. 건강 상태를 고르지 않으면 이 동의 없이도 분석할 수 있어요.' },
+        { title: '어디에 보관하나요', desc: '고른 건강 상태는 서버가 아니라 지금 쓰는 브라우저에만 남겨요. 다음에 분석할 때 다시 고르지 않아도 되니까요. 브라우저 설정에서 언제든 지울 수 있어요.' },
+        { title: '언제까지 갖고 있나요', desc: '결과를 보여드리면 서버에서는 바로 지워요. 사용 기록 활용에도 동의했다면, 그 기록에 남는 부분은 6개월 보관해요.' },
+        { title: '동의하지 않으면요', desc: '건강 상태에 맞춘 결과를 만들 수 없어요. 모두 \'해당없음\'으로 고르면 이 동의 없이도 분석할 수 있어요.' },
       ]}
       notice="건강 상태는 민감정보라서 「개인정보 보호법」 제23조에 따라 따로 동의를 받고 있어요. 받은 정보는 위에 적은 목적 밖으로 쓰거나 다른 곳에 넘기지 않아요."
     />
@@ -335,7 +504,7 @@ export function ShareModal({ verdict, productName, total, ingredients, onClose }
     <Sheet title="이미지로 공유" onClose={onClose} footer={<Button icon={<IconDownload size={19} />} onClick={onClose}>이미지 저장</Button>}>
       <div style={{ borderRadius: R.lg, overflow: 'hidden', border: `1px solid ${C.gray100}` }}>
         <div style={{ backgroundColor: v.surface, padding: `${S.xxl}px ${S.xl}px` }}>
-          <p style={{ ...TXT.title, fontSize: 22 }}>{productName}</p>
+          <p style={TXT.productName}>{productName}</p>
           <p style={{ ...TXT.caption, color: v.toneText, marginTop: S.xs }}>{summarize(total, ingredients)}</p>
         </div>
         <div style={{ padding: `${S.lg}px ${S.xl}px ${S.xl}px`, backgroundColor: C.white }}>

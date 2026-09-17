@@ -1,10 +1,10 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { ChangeEvent } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { C, F, S, TXT, R, L, VERDICT } from './theme'
 import {
-  Screen, Body, PageTitle, SectionLabel, Button, Collapse, TextLink, Card, Notice,
-  VerdictBadge, CheckBox, ConsentRow, HowItWorksModal, HealthConsentModal, LogConsentModal, ShareModal, summarize,
+  Screen, Body, PageTitle, SectionLabel, InlineAction, ProductChip, ProductNameField, Button, Collapse, TextLink, TextLinkRow, Card,
+  VerdictBadge, CheckBox, RadioMark, ConsentRow, NoticeStack, HowItWorksModal, HealthConsentModal, LogConsentModal, ShareModal, summarize,
   rowDivider, ROW_TEXT_INSET,
   IconSearch, IconCamera, IconImage, IconArrowRight, IconChevronLeft, IconCheck,
   IconWarning, IconDanger, IconInfo, IconRefresh, IconShare, IconClose,
@@ -22,6 +22,12 @@ const HERO_VARIANTS: [string, string][] = [
   ['매일 챙겨 먹는 보충제,', '나한테 괜찮을까?'],
 ]
 
+// 하나만 고를 수 있는 설문 그룹 — 나머지는 중복 선택. 그룹명은 DB(health_survey.category) 값과 같아야 한다.
+const SINGLE_CHOICE_GROUPS = ['생애주기']
+
+// 검색 결과 리스트 최소 높이 — 자판이 크게 올라와도 최소 1행은 남긴다.
+const LIST_MIN = 54
+
 // 인기 제품 — 우리 DB(식약처 카탈로그)에 실제 존재하는 report_no. 클릭 시 바로 분석.
 const POPULAR: { reportNo: string; name: string }[] = [
   { reportNo: '19800375002112', name: '코카콜라 제로' },
@@ -35,13 +41,17 @@ const POPULAR: { reportNo: string; name: string }[] = [
 export function IntroScreen() {
   const nav = useNavigate()
   const { setSource, setPending } = useFlow()
-  const surveyDone = loadSurvey().completed
+  const savedSurvey = loadSurvey()
+  const surveyDone = savedSurvey.completed
+  const savedCount = savedSurvey.conditions.length
   const [query, setQuery] = useState('')
   const [focused, setFocused] = useState(false)
   const [results, setResults] = useState<ProductRow[]>([])
   const [showHow, setShowHow] = useState(false)
   const [history, setHistory] = useState<HistoryItem[]>(() => loadHistory())
   const [heroIndex, setHeroIndex] = useState(0)
+  const [listMax, setListMax] = useState(0)
+  const fieldRef = useRef<HTMLDivElement>(null)
 
   // 히어로 문구 롤링 — 검색 중엔 히어로가 접히므로 멈추고, 모션 최소화면 아예 안 돌린다.
   useEffect(() => {
@@ -59,6 +69,40 @@ export function IntroScreen() {
   }, [query])
 
   const showDropdown = focused && query.length > 0
+
+  /* 리스트 높이는 두 경계 중 먼저 만나는 쪽까지만 쓴다.
+     - 평소: 하단 액션 영역의 윗선 (버튼에 맞추면 그 배경과 맞닿아 붙어 보인다)
+     - 자판이 올라오면: 보이는 화면 아래끝 (position:fixed + vh/dvh 는 자판에 반응하지
+       않으므로 visualViewport 가 유일한 단서다) */
+  useLayoutEffect(() => {
+    if (!showDropdown) return
+
+    const update = () => {
+      const el = fieldRef.current
+      if (!el) return
+      const vv = window.visualViewport
+      const visibleBottom = vv ? vv.offsetTop + vv.height : window.innerHeight
+      const block = document.querySelector('[data-footer-block]')
+      const footerBlockTop = block?.getBoundingClientRect().top ?? Infinity
+      const listTop = el.getBoundingClientRect().bottom + S.sm // 검색창 아래 8px 띄운 위치
+      const room = Math.min(visibleBottom, footerBlockTop) - listTop - S.lg
+      setListMax(Math.max(LIST_MIN, Math.round(room)))
+    }
+
+    update()
+    // 히어로가 접히면서 검색창이 위로 올라가므로, 애니메이션이 끝난 뒤 다시 잰다
+    const settle = setTimeout(update, 320)
+    const vv = window.visualViewport
+    vv?.addEventListener('resize', update)
+    vv?.addEventListener('scroll', update)
+    window.addEventListener('resize', update)
+    return () => {
+      clearTimeout(settle)
+      vv?.removeEventListener('resize', update)
+      vv?.removeEventListener('scroll', update)
+      window.removeEventListener('resize', update)
+    }
+  }, [showDropdown])
 
   const goProduct = (reportNo: string, name: string) => {
     addHistory({ reportNo, name })
@@ -87,22 +131,25 @@ export function IntroScreen() {
       <Screen
         footer={
           <>
+            {/* 개인화가 걸려 있다는 신호 + 수정 진입점. 하단 보조 링크와 같은 무게로 둔다.
+                질환명은 적지 않는다 — 민감정보라 첫 화면에서 어깨너머로 보이면 안 된다. */}
+            {surveyDone && (
+              <div className="flex items-center justify-between" style={{ marginBottom: S.md }}>
+                <p style={{ ...TXT.label, color: C.gray500 }}>
+                  {savedCount > 0 ? `건강 정보 ${savedCount}개를 반영하고 있어요` : '건강 정보를 더하면 결과가 정확해져요'}
+                </p>
+                <InlineAction onClick={() => nav('/survey?edit=1')}>{savedCount > 0 ? '수정' : '추가'}</InlineAction>
+              </div>
+            )}
             <Button icon={<IconCamera size={19} />} onClick={() => nav('/photo')}>사진 찍고 분석하기</Button>
-            <div className="flex items-center justify-center" style={{ gap: S.md, marginTop: S.md }}>
-              <button onClick={() => setShowHow(true)} className="flex items-center gap-1.5 transition-opacity active:opacity-60" style={{ ...TXT.label, color: C.gray500, height: 40, padding: `0 ${S.sm}px` }}>
-                어떻게 분석하나요<IconInfo size={16} color={C.gray300} />
-              </button>
-              {surveyDone && (
-                <button onClick={() => nav('/survey?edit=1')} className="flex items-center transition-opacity active:opacity-60" style={{ ...TXT.label, color: C.gray500, height: 40, padding: `0 ${S.sm}px` }}>
-                  건강 정보 수정
-                </button>
-              )}
-            </div>
+            <TextLinkRow>
+              <TextLink onClick={() => setShowHow(true)} iconRight={<IconInfo size={16} color={C.gray300} />}>어떻게 분석하나요</TextLink>
+            </TextLinkRow>
           </>
         }
       >
         <Body>
-          <Collapse open={!focused} maxHeight={240}>
+          <Collapse open={!focused}>
             <PageTitle
               hero
               title={
@@ -118,6 +165,7 @@ export function IntroScreen() {
 
           <div className="relative">
             <div
+              ref={fieldRef}
               className="flex items-center transition-all duration-150"
               style={{ gap: S.md, height: L.field, padding: `0 ${S.lg}px`, borderRadius: R.md, backgroundColor: focused ? C.white : C.gray25, border: `${focused ? 1.5 : 1}px solid ${focused ? C.blue : C.gray100}` }}
             >
@@ -129,7 +177,7 @@ export function IntroScreen() {
                 onBlur={() => setTimeout(() => setFocused(false), 150)}
                 placeholder="제품명으로 검색"
                 className="flex-1 bg-transparent outline-none min-w-0"
-                style={{ ...TXT.strong, fontSize: 17 }}
+                style={TXT.control}
               />
               {query && (
                 <button aria-label="검색어 지우기" onMouseDown={(e) => e.preventDefault()} onClick={() => setQuery('')} className="shrink-0 flex items-center justify-center transition-opacity active:opacity-60" style={{ width: 24, height: 24, borderRadius: R.chip, backgroundColor: C.gray100 }}>
@@ -140,14 +188,16 @@ export function IntroScreen() {
 
             {showDropdown && (
               <div className="absolute left-0 right-0 overflow-hidden z-10 anim-fade-up" style={{ top: '100%', marginTop: S.sm, backgroundColor: C.white, borderRadius: R.md, border: `1px solid ${C.gray100}`, boxShadow: '0 12px 32px rgba(25,31,40,0.10)' }}>
-                <div style={{ maxHeight: '46vh', overflowY: 'auto' }}>
+                {/* 보이는 화면 높이에서 계산한 만큼만 열고, 넘치면 리스트만 스크롤한다.
+                    대체 경로 줄은 리스트의 마지막 항목으로 들어간다. */}
+                <div style={{ maxHeight: listMax, overflowY: 'auto' }}>
                   {results.map((p, i) => (
                     <button key={p.reportNo} className="w-full flex items-center text-left transition-colors" style={{ gap: S.md, padding: S.lg, paddingLeft: ROW_TEXT_INSET, borderTop: rowDivider(i) }} onMouseDown={(e) => e.preventDefault()} onClick={() => pick(p)}>
                       <span className="flex-1" style={{ ...TXT.label, color: C.gray900 }}>{p.name}</span>
                       <IconArrowRight size={16} color={C.gray300} />
                     </button>
                   ))}
-                  <div className="flex items-center justify-between" style={{ gap: S.md, padding: S.lg, paddingLeft: ROW_TEXT_INSET, borderTop: results.length > 0 ? `1px solid ${C.gray50}` : 'none' }}>
+                  <div className="flex items-center justify-between" style={{ gap: S.md, padding: S.lg, paddingLeft: ROW_TEXT_INSET, borderTop: rowDivider(results.length) }}>
                     <p style={TXT.label}>{results.length > 0 ? '찾는 제품이 없나요?' : '찾는 제품이 없어요'}</p>
                     <button className="shrink-0 flex items-center transition-opacity active:opacity-60" style={{ gap: S.xs, padding: `${S.sm}px ${S.md}px`, borderRadius: R.chip, backgroundColor: C.blueSurface }} onMouseDown={(e) => e.preventDefault()} onClick={() => nav('/photo')}>
                       <IconCamera size={15} color={C.blue} />
@@ -159,23 +209,13 @@ export function IntroScreen() {
             )}
           </div>
 
-          <Collapse open={!focused} maxHeight={280}>
+          <Collapse open={!focused}>
             {history.length > 0 && (
               <div style={{ marginTop: S.lg }}>
-                <div className="flex items-center justify-between" style={{ marginBottom: S.md }}>
-                  <p style={{ ...TXT.caption, fontFamily: F.md, fontWeight: 500, color: C.gray400 }}>최근 본 제품</p>
-                  <button onClick={clearAll} className="transition-opacity active:opacity-60" style={{ ...TXT.caption, color: C.gray400 }}>모두 지우기</button>
-                </div>
+                <SectionLabel action={<InlineAction onClick={clearAll}>모두 지우기</InlineAction>}>최근 본 제품</SectionLabel>
                 <div className="flex flex-wrap" style={{ gap: S.sm }}>
                   {history.map((h) => (
-                    <div key={h.reportNo} className="flex items-center" style={{ borderRadius: R.chip, backgroundColor: C.blueSurface }}>
-                      <button onClick={() => pickHistory(h)} className="transition-all duration-150 active:scale-[0.96]" style={{ padding: `${S.sm}px ${S.xs}px ${S.sm}px ${S.md}px`, ...TXT.caption, color: C.blueStrong }}>
-                        {h.name}
-                      </button>
-                      <button onClick={() => removeOne(h.reportNo)} aria-label="삭제" className="flex items-center justify-center transition-opacity active:opacity-60" style={{ padding: `0 ${S.sm}px`, alignSelf: 'stretch' }}>
-                        <IconClose size={13} color={C.blue} />
-                      </button>
-                    </div>
+                    <ProductChip key={h.reportNo} recent name={h.name} onClick={() => pickHistory(h)} onRemove={() => removeOne(h.reportNo)} />
                   ))}
                 </div>
               </div>
@@ -184,12 +224,11 @@ export function IntroScreen() {
               <SectionLabel>인기 제품</SectionLabel>
               <div className="flex flex-wrap" style={{ gap: S.sm }}>
                 {POPULAR.map((p) => (
-                  <button key={p.reportNo} onClick={() => goProduct(p.reportNo, p.name)} className="transition-all duration-150 active:scale-[0.96]" style={{ padding: `${S.sm}px ${S.md}px`, borderRadius: R.chip, backgroundColor: C.gray50, ...TXT.caption, color: C.gray600 }}>
-                    {p.name}
-                  </button>
+                  <ProductChip key={p.reportNo} name={p.name} onClick={() => goProduct(p.reportNo, p.name)} />
                 ))}
               </div>
             </div>
+
           </Collapse>
         </Body>
       </Screen>
@@ -203,35 +242,82 @@ export function SurveyScreen() {
   const [sp] = useSearchParams()
   const edit = sp.get('edit') === '1'   // 홈의 "건강 정보 수정"으로 진입(분석 아님, 저장만)
   const { source, setPending } = useFlow()
+  const saved = useState(() => loadSurvey())[0]
   const [groups, setGroups] = useState<ConditionGroup[]>([])
-  const [selected, setSelected] = useState<Set<string>>(() => new Set(loadSurvey().conditions))
-  const [agreeHealth, setAgreeHealth] = useState<boolean>(() => loadSurvey().agreeHealth)  // 필수(건강상태 선택 시)
-  const [agreeLog, setAgreeLog] = useState<boolean>(() => loadSurvey().agreeLog)            // 선택
+  const [selected, setSelected] = useState<Set<string>>(() => new Set(saved.conditions))
+  const [noneGroups, setNoneGroups] = useState<Set<string>>(() => new Set(saved.noneGroups))
+  const [agreeHealth, setAgreeHealth] = useState<boolean>(saved.agreeHealth)  // 필수(건강상태 선택 시)
+  const [agreeLog, setAgreeLog] = useState<boolean>(saved.agreeLog)            // 선택
   const [showHealth, setShowHealth] = useState(false)
   const [showLog, setShowLog] = useState(false)
+  // 한 번 마친 사람이 다시 들어오면 전부 펼쳐 둔다(수정하러 온 것이므로 순차 노출이 방해된다)
+  const revealAll = useState(() => saved.completed)[0]
+  const groupRefs = useRef<Record<string, HTMLDivElement | null>>({})
+  const shownCount = useRef(0)
 
   useEffect(() => { getHealthSurvey().then(setGroups).catch(() => setGroups([])) }, [])
   // 설문 선택·동의를 로컬에 저장 → 다시 들어와도 유지(completed 플래그는 보존)
   useEffect(() => {
-    saveSurvey({ conditions: Array.from(selected), agreeHealth, agreeLog, completed: loadSurvey().completed })
-  }, [selected, agreeHealth, agreeLog])
+    saveSurvey({ conditions: Array.from(selected), noneGroups: Array.from(noneGroups), agreeHealth, agreeLog, completed: loadSurvey().completed })
+  }, [selected, noneGroups, agreeHealth, agreeLog])
 
-  const toggle = (id: string) => {
+  /* 한 그룹을 고르면 다음 그룹이 아래에 나타난다. '해당없음'도 고른 것으로 친다. */
+  const isDone = (g: ConditionGroup) => noneGroups.has(g.group) || g.items.some((i) => selected.has(i.id))
+  const visible = revealAll ? groups : groups.filter((_, gi) => groups.slice(0, gi).every(isDone))
+
+  // 새 그룹이 열리면 그 자리로 부드럽게 이동시킨다
+  useEffect(() => {
+    if (shownCount.current > 0 && visible.length > shownCount.current) {
+      groupRefs.current[visible[visible.length - 1].group]?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+    shownCount.current = visible.length
+  }, [visible.length])
+
+  const clearHealthConsentIfEmpty = (next: Set<string>) => { if (next.size === 0) setAgreeHealth(false) }
+
+  const pickItem = (group: string, id: string) => {
     const next = new Set(selected)
-    if (next.has(id)) next.delete(id); else next.add(id)
-    if (next.size === 0) setAgreeHealth(false)   // 건강상태를 모두 해제하면 건강 동의도 되돌림
-    setSelected(next)
+    if (SINGLE_CHOICE_GROUPS.includes(group)) {
+      // 하나만 고르는 그룹 — 같은 그룹의 기존 선택을 먼저 비운다
+      groups.find((g) => g.group === group)?.items.forEach((i) => next.delete(i.id))
+      if (!selected.has(id)) next.add(id)
+    } else {
+      if (next.has(id)) next.delete(id); else next.add(id)
+    }
+    // 항목을 고르면 그 그룹의 '해당없음'은 풀린다
+    const nextNone = new Set(noneGroups); nextNone.delete(group)
+    clearHealthConsentIfEmpty(next)
+    setSelected(next); setNoneGroups(nextNone)
   }
 
+  const pickNone = (group: string) => {
+    const nextNone = new Set(noneGroups)
+    const next = new Set(selected)
+    if (nextNone.has(group)) {
+      nextNone.delete(group)
+    } else {
+      nextNone.add(group)
+      // '해당없음'을 고르면 그 그룹에서 고른 것들은 모두 해제한다
+      groups.find((g) => g.group === group)?.items.forEach((i) => next.delete(i.id))
+    }
+    clearHealthConsentIfEmpty(next)
+    setSelected(next); setNoneGroups(nextNone)
+  }
+
+  // 모든 그룹에 답해야 진행할 수 있다('해당없음'도 답으로 친다)
+  const unanswered = groups.find((g) => !isDone(g))
   // 건강 정보 동의는 건강상태를 골랐을 때만 필요하고 그땐 필수. 사용 기록 동의는 선택(버튼 안 막음).
   const picked = selected.size > 0
-  const canProceed = !picked || agreeHealth
-  const ctaLabel = !canProceed
-    ? '건강 정보 활용 동의에 체크해 주세요'
-    : edit ? '저장' : picked ? `${selected.size}개 선택 · 분석 시작` : '분석하기'
+  const canProceed = !unanswered && (!picked || agreeHealth)
+  const ctaLabel = unanswered
+    ? `${unanswered.group} 항목을 골라주세요`
+    : !canProceed
+      ? '건강 정보 활용 동의에 체크해 주세요'
+      : edit ? '저장' : picked ? `${selected.size}개 선택 · 분석 시작` : '분석하기'
 
   const submit = () => {
-    saveSurvey({ conditions: Array.from(selected), agreeHealth, agreeLog, completed: true })
+    // noneGroups 는 화면 전용 — conditions 에 섞이지 않는다
+    saveSurvey({ conditions: Array.from(selected), noneGroups: Array.from(noneGroups), agreeHealth, agreeLog, completed: true })
     if (edit) { nav('/'); return }   // 편집 모드: 저장만 하고 홈으로
     setPending({
       ...source,
@@ -261,31 +347,46 @@ export function SurveyScreen() {
               </ConsentRow>
             </div>
             <Button disabled={!canProceed} onClick={submit}>{ctaLabel}</Button>
-            <TextLink onClick={() => nav(-1)} iconLeft={<IconChevronLeft size={16} color={C.gray400} />}>뒤로가기</TextLink>
+            <TextLinkRow><TextLink onClick={() => nav(-1)} iconLeft={<IconChevronLeft size={16} color={C.gray400} />}>뒤로가기</TextLink></TextLinkRow>
           </>
         }
       >
         <Body>
-          <PageTitle title={<>해당하는 건강 상태를<br />모두 골라주세요</>} desc="고른 상태에 맞춰 조심해야 할 성분을 더 정확하게 찾아드려요. 해당하는 항목이 없으면 고르지 않아도 괜찮아요." />
-          {groups.map(({ group, items }, gi) => (
-            <div key={group} style={{ marginTop: gi === 0 ? 0 : S.xxl }}>
-              <SectionLabel>{group}</SectionLabel>
-              <Card padded={false}>
-                {items.map(({ id, label, desc }, i) => {
-                  const on = selected.has(id)
-                  return (
-                    <button key={id} onClick={() => toggle(id)} className="w-full text-left flex items-center transition-colors duration-150" style={{ gap: S.md, padding: `${S.lg}px ${S.lg}px`, borderTop: rowDivider(i), backgroundColor: on ? C.blueSurface : C.white }}>
-                      <CheckBox on={on} size={22} />
-                      <div className="flex-1 min-w-0">
-                        <p style={{ ...TXT.label, color: on ? C.blueStrong : C.gray900 }}>{label}</p>
-                        <p style={{ ...TXT.caption, color: on ? C.blue : C.gray400, marginTop: 2 }}>{desc}</p>
-                      </div>
-                    </button>
-                  )
-                })}
-              </Card>
-            </div>
-          ))}
+          <PageTitle title={<>해당하는 건강 상태를<br />모두 골라주세요</>} desc="고른 상태에 맞춰 조심해야 할 성분을 더 정확하게 찾아드려요. 해당하는 항목이 없으면 '해당없음'을 골라주세요." />
+          {visible.map((g, gi) => {
+            const single = SINGLE_CHOICE_GROUPS.includes(g.group)
+            const Mark = single ? RadioMark : CheckBox
+            const noneOn = noneGroups.has(g.group)
+            return (
+              <div
+                key={g.group}
+                ref={(el) => { groupRefs.current[g.group] = el }}
+                className={gi === 0 ? undefined : 'anim-fade-up'}
+                style={{ marginTop: gi === 0 ? 0 : S.xxl, scrollMarginTop: S.lg }}
+              >
+                <SectionLabel>{g.group}</SectionLabel>
+                <Card padded={false}>
+                  {/* '해당없음'이 맨 위 — 해당 사항이 없는 사람이 가장 먼저 빠져나갈 수 있게 */}
+                  <button onClick={() => pickNone(g.group)} className="w-full text-left flex items-center transition-colors duration-150" style={{ gap: S.md, padding: `${S.lg}px ${S.lg}px`, borderTop: rowDivider(0), backgroundColor: noneOn ? C.blueSurface : C.white }}>
+                    <Mark on={noneOn} size={22} />
+                    <p style={{ ...TXT.label, color: noneOn ? C.blueStrong : C.gray900 }}>해당없음</p>
+                  </button>
+                  {g.items.map(({ id, label, desc }, i) => {
+                    const on = selected.has(id)
+                    return (
+                      <button key={id} onClick={() => pickItem(g.group, id)} className="w-full text-left flex items-center transition-colors duration-150" style={{ gap: S.md, padding: `${S.lg}px ${S.lg}px`, borderTop: rowDivider(i + 1), backgroundColor: on ? C.blueSurface : C.white }}>
+                        <Mark on={on} size={22} />
+                        <div className="flex-1 min-w-0">
+                          <p style={{ ...TXT.label, color: on ? C.blueStrong : C.gray900 }}>{label}</p>
+                          {desc && <p style={{ ...TXT.caption, color: on ? C.blue : C.gray400, marginTop: 2 }}>{desc}</p>}
+                        </div>
+                      </button>
+                    )
+                  })}
+                </Card>
+              </div>
+            )
+          })}
         </Body>
       </Screen>
     </>
@@ -336,7 +437,7 @@ export function PhotoGuideScreen() {
             <Button variant="secondary" icon={<IconImage size={19} color={C.gray600} />} onClick={() => fileRef.current?.click()}>앨범에서 고르기</Button>
             <Button icon={<IconCamera size={19} />} onClick={() => fileRef.current?.click()}>사진 찍기</Button>
           </div>
-          <TextLink onClick={() => nav('/')} iconLeft={<IconChevronLeft size={16} color={C.gray400} />}>뒤로가기</TextLink>
+          <TextLinkRow><TextLink onClick={() => nav('/')} iconLeft={<IconChevronLeft size={16} color={C.gray400} />}>뒤로가기</TextLink></TextLinkRow>
         </>
       }
     >
@@ -422,6 +523,8 @@ export function LoadingScreen() {
 
 /* ═══ 결과: flow.result 렌더 ═══ */
 function IngredientRiskCard({ data, index = 0 }: { data: IngredientCard; index?: number }) {
+  const rows = [{ k: '하루 기준', v: data.dose }, { k: '근거', v: data.evidence }]
+    .filter((row): row is { k: string; v: string } => !!row.v?.trim())
   return (
     <div className="anim-fade-up" style={{ animationDelay: `${index * 70}ms` }}>
       <Card>
@@ -430,14 +533,17 @@ function IngredientRiskCard({ data, index = 0 }: { data: IngredientCard; index?:
           <VerdictBadge verdict={data.type} />
         </div>
         {data.effect && <p style={{ ...TXT.body, marginBottom: S.lg }}>{data.effect}</p>}
-        <div style={{ backgroundColor: C.gray25, borderRadius: R.sm, padding: S.lg }}>
-          {[{ k: '하루 기준', v: data.dose }, { k: '근거', v: data.evidence }].map((row, i) => (
-            <div key={row.k} style={{ marginTop: i === 0 ? 0 : S.md }}>
-              <p style={{ ...TXT.caption, color: C.gray400, marginBottom: 2 }}>{row.k}</p>
-              <p style={{ ...TXT.caption, color: C.gray700 }}>{row.v ?? '-'}</p>
-            </div>
-          ))}
-        </div>
+        {/* 값이 없는 줄은 '-' 로 채우지 않고 빼둔다. 둘 다 없으면 상자도 그리지 않는다 */}
+        {rows.length > 0 && (
+          <div style={{ backgroundColor: C.gray25, borderRadius: R.sm, padding: S.lg }}>
+            {rows.map((row, i) => (
+              <div key={row.k} style={{ marginTop: i === 0 ? 0 : S.md }}>
+                <p style={{ ...TXT.caption, color: C.gray400, marginBottom: 2 }}>{row.k}</p>
+                <p style={{ ...TXT.caption, color: C.gray700 }}>{row.v}</p>
+              </div>
+            ))}
+          </div>
+        )}
       </Card>
     </div>
   )
@@ -466,7 +572,8 @@ export function ResultScreen() {
         }
       >
         <Body>
-          <h1 style={{ ...TXT.title, fontSize: 22 }}>{result.productName}</h1>
+          {/* key: 다른 결과로 바뀌면 입력 상태를 새 제품명으로 다시 시작한다 */}
+          <ProductNameField key={result.productName} initialName={result.productName} />
           <div className="flex items-center" style={{ gap: S.md, marginTop: S.xl, padding: `${S.lg}px ${S.xl}px`, borderRadius: R.lg, backgroundColor: v.surface }}>
             <div className="shrink-0 anim-pop"><VIcon size={22} color={v.tone} /></div>
             <div className="flex-1 min-w-0">
@@ -474,10 +581,8 @@ export function ResultScreen() {
               <p style={{ ...TXT.caption, color: v.toneText, marginTop: 2 }}>{summarize(result.totalDetected, result.ingredients)}</p>
             </div>
           </div>
-          {result.noDietEffect && (
-            <div style={{ marginTop: S.lg }}><Notice plain>분석 결과, 다이어트 효과가 없는 감미료가 포함됐어요.</Notice></div>
-          )}
-          {result.note && <p style={{ ...TXT.body, marginTop: S.xl }}>{result.note}</p>}
+          {/* 안내 순서: 정보 제한 > 다이어트 효과 없음 > 카페인(백엔드에서 검출 여부가 오면 추가) */}
+          <NoticeStack items={[result.note, result.noDietEffect && '제품에 포함된 감미료는 다이어트에 긍정적 효과는 없어요.']} />
           {result.ingredients.length > 0 && (
             <div style={{ marginTop: S.xxl, display: 'flex', flexDirection: 'column', gap: S.md }}>
               {result.ingredients.map((ing, i) => <IngredientRiskCard key={ing.name} data={ing} index={i} />)}
