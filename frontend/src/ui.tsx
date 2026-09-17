@@ -145,7 +145,7 @@ export function ProductNameField({ name, onChange }: { name: string; onChange: (
 }
 
 /** 화면 뼈대: 스크롤 본문 + 하단 고정 액션(본문 위에 겹쳐 페이드) */
-export function Screen({ children, footer }: { children: ReactNode; footer?: ReactNode }) {
+export function Screen({ children, footer, share = true }: { children: ReactNode; footer?: ReactNode; share?: boolean }) {
   const footerRef = useRef<HTMLDivElement>(null)
   const [footerH, setFooterH] = useState(0)
   useEffect(() => {
@@ -159,7 +159,17 @@ export function Screen({ children, footer }: { children: ReactNode; footer?: Rea
   }, [!!footer])
   return (
     <div style={{ position: 'fixed', top: L.navH, left: 0, right: 0, bottom: 0, backgroundColor: C.white }}>
-      <div className="h-full overflow-y-auto anim-fade-up" style={{ paddingBottom: footerH }}>{children}</div>
+      <div className="h-full overflow-y-auto anim-fade-up" style={{ paddingBottom: footerH }}>
+        {/* 글로벌 공유 — 모든 화면의 같은 자리(오른쪽 위)에 둔다. 그래야 '어디서든
+            여기'가 성립한다. 높이 56(위 16 + 버튼 40)을 음수 마진으로 40 만 되돌려
+            본문은 16 만 내려가고, 아이콘은 본문 상단 여백 안에 떠 있게 된다. */}
+        {share && (
+          <div className="flex justify-end" style={{ padding: `${S.lg}px ${L.pageX}px 0`, marginBottom: -40 }}>
+            <ShareAppButton />
+          </div>
+        )}
+        {children}
+      </div>
       {footer && (
         <div
           ref={footerRef}
@@ -340,6 +350,9 @@ export function VerdictBadge({ verdict }: { verdict: VerdictKey }) {
   return <Pill bg={v.surface} fg={v.toneText}>{v.badge}</Pill>
 }
 
+/** 공유가 안 되는 환경에서 두 공유(결과 이미지·서비스 링크)가 똑같이 내보내는 말. */
+const SHARE_UNAVAILABLE = '휴대폰에서 다른 앱으로 공유할 수 있어요.'
+
 /** 토스트 — 화면을 막지 않고 잠깐 알리고 사라진다. 시트 위에도 떠야 해서 z 를 시트보다 높게 둔다.
  *  누를 것이 없으므로 포인터 이벤트를 받지 않는다(뒤 버튼을 가리지 않게). */
 export function Toast({ message, onDone, duration = 2800 }: { message: string; onDone: () => void; duration?: number }) {
@@ -371,31 +384,32 @@ export function ShareAppButton() {
 
   async function share() {
     const url = new URL(import.meta.env.BASE_URL, window.location.origin).href
-    const data = { title: document.title, text: '전성분 표를 찍으면 조심해야 할 성분을 찾아줘요.', url }
-    try {
-      if (navigator.share) return await navigator.share(data)
-    } catch (e) {
-      if ((e as Error)?.name === 'AbortError') return // 사용자가 공유 시트를 닫은 것
-      // 그 밖의 실패는 공유가 막힌 환경으로 보고 복사로 넘어간다
+    if (navigator.share) {
+      /* 공유 시트를 띄우면서 클립보드에도 넣어 둔다 — 시트에서 '복사'를 다시 찾지
+         않아도 되게. await 하지 않는다: 기다리는 사이 사용자 제스처가 풀려 공유
+         시트가 안 뜨는 브라우저가 있다. 클립보드는 덤이라 실패해도 그냥 넘어간다. */
+      navigator.clipboard?.writeText(url).catch(() => {})
+      try {
+        return await navigator.share({ title: document.title, text: '전성분 표를 찍으면 조심해야 할 성분을 찾아줘요.', url })
+      } catch (e) {
+        if ((e as Error)?.name === 'AbortError') return // 사용자가 공유 시트를 닫은 것
+      }
     }
-    try {
-      await navigator.clipboard.writeText(url)
-      setToast('링크를 복사했어요.')
-    } catch {
-      setToast('링크를 복사하지 못했어요.')
-    }
+    // 공유가 막힌 환경(대부분 데스크톱) — 결과 이미지 공유와 같은 말로 안내한다
+    setToast(SHARE_UNAVAILABLE)
   }
 
   return (
     <>
       {toast && <Toast message={toast} onDone={() => setToast('')} />}
-      {/* 40 탭 영역. 아이콘 박스의 빈 여백(약 2)까지 감안해 오른쪽으로 8 당겨야
-          그림이 본문 오른쪽 선에 맞아 보인다. */}
+      {/* 탭 영역 40 은 지키고 여백만 당긴다. 40 박스 안에서 아이콘(20)이 가운데
+          오므로 좌우로 10 씩 빈다 — 오른쪽 -12 로 아이콘 박스의 빈 여백까지
+          빼야 그림이 본문 오른쪽 선(20)에 맞아 보인다. 세로 자리는 Screen 이 잡는다. */}
       <button
         aria-label="서비스 링크 공유하기"
         onClick={share}
         className="flex items-center justify-center transition-opacity active:opacity-60"
-        style={{ width: 40, height: 40, marginRight: -S.sm }}
+        style={{ width: 40, height: 40, marginRight: -S.md }}
       >
         <IconShare size={20} color={C.gray400} />
       </button>
@@ -604,7 +618,7 @@ export function ShareModal({ verdict, productName, total, ingredients, onClose }
       /* 공유를 못 하는 환경(대부분 데스크톱)에서 말없이 저장해 버리면 사용자가 무엇이
          일어났는지 모른다. 어디서 되는지 알려주고, 저장은 옆 버튼으로 남겨 둔다. */
       if (!navigator.share || !navigator.canShare?.({ files: [file] })) {
-        return setToast('휴대폰에서 다른 앱으로 공유할 수 있어요.')
+        return setToast(SHARE_UNAVAILABLE)
       }
       await navigator.share({ files: [file], title: productName.trim() || v.title })
     } catch (e) {

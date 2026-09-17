@@ -4,7 +4,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { C, F, S, TXT, R, L, VERDICT } from './theme'
 import {
   Screen, Body, PageTitle, SectionLabel, InlineAction, ProductChip, ProductNameField, Button, Collapse, TextLink, TextLinkRow, Card,
-  VerdictBadge, CheckBox, RadioMark, ConsentRow, NoticeStack, HowItWorksModal, HealthConsentModal, LogConsentModal, ShareModal, ShareAppButton, summarize,
+  VerdictBadge, CheckBox, RadioMark, ConsentRow, NoticeStack, HowItWorksModal, HealthConsentModal, LogConsentModal, ShareModal, summarize,
   rowDivider, ROW_TEXT_INSET,
   IconSearch, IconCamera, IconImage, IconArrowRight, IconChevronLeft, IconCheck,
   IconWarning, IconDanger, IconInfo, IconRefresh, IconShare, IconClose,
@@ -149,10 +149,6 @@ export function IntroScreen() {
         }
       >
         <Body>
-          {/* 글로벌 공유 — 검색으로 히어로가 접혀도 자리를 지켜야 하므로 Collapse 밖에 둔다 */}
-          <div className="flex justify-end">
-            <ShareAppButton />
-          </div>
           <Collapse open={!focused}>
             <PageTitle
               hero
@@ -514,7 +510,7 @@ export function LoadingScreen() {
   }, [])
 
   return (
-    <Screen>
+    <Screen share={false}>
       <div className="flex flex-col items-center justify-center h-full" style={{ padding: `0 ${L.pageX + 20}px` }}>
         <svg width="44" height="44" viewBox="0 0 48 48" fill="none" className="animate-spin">
           <circle cx="24" cy="24" r="20" stroke={C.gray50} strokeWidth="4" />
