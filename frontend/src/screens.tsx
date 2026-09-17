@@ -255,6 +255,11 @@ export function SurveyScreen() {
   const groupRefs = useRef<Record<string, HTMLDivElement | null>>({})
   const shownCount = useRef(0)
 
+  /* 공유 링크·주소 직접 입력으로 들어오면 분석 대상이 없다. 그대로 두면 데모 데이터로
+     결과가 나오므로 인트로로 돌려보낸다. '건강 정보 수정'(edit)은 대상 없이도 유효하다. */
+  const hasSource = !!(source.productReportNo || source.imageBase64)
+  useEffect(() => { if (!edit && !hasSource) nav('/', { replace: true }) }, [edit, hasSource, nav])
+
   useEffect(() => { getHealthSurvey().then(setGroups).catch(() => setGroups([])) }, [])
   // 설문 선택·동의를 로컬에 저장 → 다시 들어와도 유지(completed 플래그는 보존)
   useEffect(() => {
@@ -598,7 +603,10 @@ export function ResultScreen() {
 export function ErrorScreen() {
   const nav = useNavigate()
   const { type } = useParams<{ type: string }>()
+  const { pending } = useFlow()
   const isService = type !== 'unclear'
+  // 분석을 거치지 않고 주소로 바로 들어온 경우 — 보여줄 맥락이 없다
+  useEffect(() => { if (!pending) nav('/', { replace: true }) }, [pending, nav])
   return (
     <Screen
       footer={
