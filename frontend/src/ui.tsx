@@ -339,6 +339,22 @@ export function VerdictBadge({ verdict }: { verdict: VerdictKey }) {
   return <Pill bg={v.surface} fg={v.toneText}>{v.badge}</Pill>
 }
 
+/** 토스트 — 화면을 막지 않고 잠깐 알리고 사라진다. 시트 위에도 떠야 해서 z 를 시트보다 높게 둔다.
+ *  누를 것이 없으므로 포인터 이벤트를 받지 않는다(뒤 버튼을 가리지 않게). */
+export function Toast({ message, onDone, duration = 2800 }: { message: string; onDone: () => void; duration?: number }) {
+  const done = useRef(onDone)
+  done.current = onDone
+  useEffect(() => {
+    const t = setTimeout(() => done.current(), duration)
+    return () => clearTimeout(t)
+  }, [message, duration])
+  return (
+    <div className="fixed left-0 right-0 flex justify-center anim-fade-up" style={{ bottom: S.x3, zIndex: 60, padding: `0 ${L.pageX}px`, pointerEvents: 'none' }}>
+      <p style={{ ...TXT.label, color: C.white, textAlign: 'center', backgroundColor: 'rgba(25,31,40,0.92)', padding: `${S.md}px ${S.lg}px`, borderRadius: R.md, boxShadow: '0 8px 24px rgba(25,31,40,0.24)' }}>{message}</p>
+    </div>
+  )
+}
+
 /** 서비스 링크 공유 — 결과 이미지가 아니라 "이 앱 자체"를 알리는 글로벌 공유다.
  *  모바일은 OS 공유 시트(카카오톡·인스타 등), 공유가 없는 데스크톱은 링크 복사로 떨어진다.
  *  공유 주소는 항상 인트로(/) 고정 — 결과 화면 주소를 남에게 주면 맥락이 없다. */
@@ -547,6 +563,7 @@ export function ShareModal({ verdict, productName, total, ingredients, onClose }
   const v = VERDICT[verdict]
   const cardRef = useRef<HTMLDivElement>(null)
   const [busy, setBusy] = useState<'save' | 'share' | null>(null)
+  const [toast, setToast] = useState('')
 
   function download(blob: Blob) {
     const url = URL.createObjectURL(blob)
@@ -567,8 +584,11 @@ export function ShareModal({ verdict, productName, total, ingredients, onClose }
       if (mode === 'save') return download(blob)
 
       const file = new File([blob], imageFileName(productName), { type: 'image/png' })
-      // 공유를 못 하는 환경이면 조용히 저장으로 떨어뜨린다 — 버튼을 눌렀는데 아무 일도 없으면 안 된다.
-      if (!navigator.canShare?.({ files: [file] })) return download(blob)
+      /* 공유를 못 하는 환경(대부분 데스크톱)에서 말없이 저장해 버리면 사용자가 무엇이
+         일어났는지 모른다. 어디서 되는지 알려주고, 저장은 옆 버튼으로 남겨 둔다. */
+      if (!navigator.share || !navigator.canShare?.({ files: [file] })) {
+        return setToast('휴대폰에서 열면 카카오톡·메시지로 바로 공유할 수 있어요.')
+      }
       await navigator.share({ files: [file], title: productName.trim() || v.title })
     } catch (e) {
       // 공유 시트를 사용자가 닫은 건 오류가 아니다.
@@ -589,6 +609,8 @@ export function ShareModal({ verdict, productName, total, ingredients, onClose }
   )
 
   return (
+    <>
+    {toast && <Toast message={toast} onDone={() => setToast('')} />}
     <Sheet title="이미지로 공유" onClose={onClose} footer={footer}>
       <div ref={cardRef} style={{ borderRadius: R.lg, overflow: 'hidden', border: `1px solid ${C.gray100}` }}>
         {/* 제품명을 모를 수 있다(사진 분석에서 이름을 못 읽고 사용자가 적지도 않은 경우).
@@ -612,5 +634,6 @@ export function ShareModal({ verdict, productName, total, ingredients, onClose }
         </div>
       </div>
     </Sheet>
+    </>
   )
 }
