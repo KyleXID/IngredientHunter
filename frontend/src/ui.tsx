@@ -303,16 +303,20 @@ export function ProductChip({ name, recent = false, onClick, onRemove }: {
       <button
         onClick={onClick}
         className="transition-all duration-150 active:scale-[0.96]"
-        style={{ padding: `${S.sm}px ${onRemove ? S.xs : S.md}px ${S.sm}px ${S.md}px`, ...TXT.caption, color: C.gray600 }}
+        style={{ padding: `${S.sm}px ${onRemove ? 0 : S.md}px ${S.sm}px ${S.md}px`, ...TXT.caption, color: C.gray600 }}
       >
         {name}
       </button>
       {onRemove && (
+        /* 여백은 아이콘 자체의 빈 공간(14 박스 안 글리프는 약 7)을 빼고 잡아야
+           눈에 보이는 간격이 글자쪽 8 · 칩 끝 13 으로 읽힌다.
+           패딩을 4씩 더 주고 음수 마진으로 되돌려, 보이는 자리는 그대로 두고
+           손가락이 닿는 범위만 26 → 34 로 넓힌다. */
         <button
           onClick={onRemove}
           aria-label={`${name} 기록 삭제`}
           className="flex items-center justify-center transition-opacity active:opacity-60"
-          style={{ padding: `0 ${S.sm}px`, alignSelf: 'stretch' }}
+          style={{ padding: `0 ${S.md}px 0 ${S.sm}px`, margin: `0 -${S.xs}px 0 -${S.xs}px`, alignSelf: 'stretch' }}
         >
           <IconClose size={14} color={C.gray400} />
         </button>
