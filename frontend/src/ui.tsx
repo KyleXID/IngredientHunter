@@ -161,10 +161,14 @@ export function Screen({ children, footer, share = true }: { children: ReactNode
     <div style={{ position: 'fixed', top: L.navH, left: 0, right: 0, bottom: 0, backgroundColor: C.white }}>
       <div className="h-full overflow-y-auto anim-fade-up" style={{ paddingBottom: footerH }}>
         {/* 글로벌 공유 — 모든 화면의 같은 자리(오른쪽 위)에 둔다. 그래야 '어디서든
-            여기'가 성립한다. 높이 56(위 16 + 버튼 40)을 음수 마진으로 40 만 되돌려
-            본문은 16 만 내려가고, 아이콘은 본문 상단 여백 안에 떠 있게 된다. */}
+            여기'가 성립한다.
+            아래 -18 은 스케일 밖 값이지만 광학 보정이다. 아이콘과 본문 사이를
+            블록 간격 S.xxl(24) 로 두려는데, 탭 영역 40 안에 아이콘(20)이 가운데
+            오면서 그림 아래로 10 이 빈다. 여백은 박스가 아니라 눈에 보이는 그림
+            기준이므로 그 10 을 빼야 한다 — 40(버튼) + 32(Body 상단) - 30(그림
+            아래끝까지) = 42, 42 - 24 = 18. */}
         {share && (
-          <div className="flex justify-end" style={{ padding: `${S.lg}px ${L.pageX}px 0`, marginBottom: -40 }}>
+          <div className="flex justify-end" style={{ padding: `${S.lg}px ${L.pageX}px 0`, marginBottom: -18 }}>
             <ShareAppButton />
           </div>
         )}
