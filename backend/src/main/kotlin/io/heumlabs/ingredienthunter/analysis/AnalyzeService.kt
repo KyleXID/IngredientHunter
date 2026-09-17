@@ -168,7 +168,8 @@ class AnalyzeService(
         val raw = when {
             geminiKey.isNotBlank() -> callGemini(imageBase64, media)
             anthropicKey.isNotBlank() -> callClaude(imageBase64, media)
-            else -> return DEMO_PRODUCT to DEMO_NAMES
+            // 키가 없으면 데모 성분으로 흐름만 태운다. 이름은 읽은 적이 없으므로 비워 둔다.
+            else -> return "" to DEMO_NAMES
         } ?: return "" to emptyList()
         val obj = runCatching { json.readValue(stripFence(raw), Map::class.java) }.getOrNull()
         // 이름을 못 읽으면 빈 값으로 둔다 — 화면이 "제품명을 입력해 주세요"로 받아 직접 적게 한다
