@@ -596,6 +596,14 @@ export function ResultScreen() {
               {result.ingredients.map((ing, i) => <IngredientRiskCard key={ing.name} data={ing} index={i} />)}
             </div>
           )}
+
+          {/* 읽어낸 원재료 전체. 판정이 붙은 성분(위 카드)과 달리 목록으로 세우지 않고
+              한 문단으로 흘린다 — 참고 정보지 읽고 판단할 대상이 아니기 때문이다. */}
+          {(result.detectedNames?.length ?? 0) > 0 && (
+            <p style={{ ...TXT.caption, marginTop: S.xxl }}>
+              검출 성분 {result.detectedNames!.length}개: {result.detectedNames!.join(', ')}
+            </p>
+          )}
         </Body>
       </Screen>
     </>

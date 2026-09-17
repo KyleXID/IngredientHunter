@@ -126,7 +126,7 @@ class AnalyzeService(
         }
         // 유해 먼저, 그다음 주의 순으로 카드 정렬(화면 우선순위)
         cards.sortByDescending { if (it.type == "harmful") 1 else 0 }
-        return AnalyzeResult(verdict, productName, rawNames.size, covered, noDietEffect, note, cards)
+        return AnalyzeResult(verdict, productName, rawNames.size, covered, noDietEffect, note, cards, rawNames)
     }
 
     /** 성분명 매칭어: 괄호 밖 본명 + 괄호 안 이명 + aliases. 2자 이상만. */
@@ -295,6 +295,9 @@ data class AnalyzeResult(
     val noDietEffect: Boolean,
     val note: String?,
     val ingredients: List<IngredientCard>,
+    /** 읽어낸 원재료 이름 전체. totalDetected 와 같은 목록이며 판정 여부와 무관하다.
+     *  기본값을 둬서 이 필드를 모르는 호출부도 그대로 동작한다. */
+    val detectedNames: List<String> = emptyList(),
 )
 
 data class IngredientCard(
