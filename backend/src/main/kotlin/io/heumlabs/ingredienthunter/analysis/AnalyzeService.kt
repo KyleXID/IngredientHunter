@@ -85,7 +85,8 @@ class AnalyzeService(
         if (!req.imageBase64.isNullOrBlank()) {
             return extractFromImage(req.imageBase64, req.mediaType ?: "image/jpeg")
         }
-        return DEMO_PRODUCT to DEMO_NAMES
+        // 분석 대상이 아예 없는 요청. 흐름만 데모 성분으로 태우고 이름은 지어내지 않는다.
+        return "" to DEMO_NAMES
     }
 
     // ── 판정: 원재료명 → DB 룰 매칭 → 개인화 → verdict/noDietEffect ──
@@ -275,7 +276,6 @@ class AnalyzeService(
         private val RETRYABLE = setOf(429, 500, 502, 503, 504)
 
         // 키 미설정 시 데모 — 실제 판정 로직을 그대로 태운다(제로 콜라류 라벨)
-        private const val DEMO_PRODUCT = "데모 제로 콜라"
         private val DEMO_NAMES = listOf("정제수", "탄산가스", "수크랄로스(감미료)", "아세설팜칼륨(감미료)", "합성향료", "구연산")
     }
 }

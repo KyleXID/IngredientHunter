@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { ChangeEvent } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { C, F, S, TXT, R, L, VERDICT } from './theme'
+import { C, F, S, TXT, R, L, SHADOW, Z, VERDICT } from './theme'
 import {
   Screen, Body, PageTitle, SectionLabel, InlineAction, ProductChip, ProductNameField, Button, Collapse, TextLink, TextLinkRow, Card,
   VerdictBadge, CheckBox, RadioMark, ConsentRow, NoticeStack, HowItWorksModal, HealthConsentModal, LogConsentModal, ShareModal, summarize,
@@ -187,7 +187,7 @@ export function IntroScreen() {
             </div>
 
             {showDropdown && (
-              <div className="absolute left-0 right-0 overflow-hidden z-10 anim-fade-up" style={{ top: '100%', marginTop: S.sm, backgroundColor: C.white, borderRadius: R.md, border: `1px solid ${C.gray100}`, boxShadow: '0 12px 32px rgba(25,31,40,0.10)' }}>
+              <div className="absolute left-0 right-0 overflow-hidden anim-fade-up" style={{ zIndex: Z.dropdown, top: '100%', marginTop: S.sm, backgroundColor: C.white, borderRadius: R.md, border: `1px solid ${C.gray100}`, boxShadow: SHADOW.dropdown }}>
                 {/* 보이는 화면 높이에서 계산한 만큼만 열고, 넘치면 리스트만 스크롤한다.
                     대체 경로 줄은 리스트의 마지막 항목으로 들어간다. */}
                 <div style={{ maxHeight: listMax, overflowY: 'auto' }}>

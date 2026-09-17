@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { C, F, S, TXT, R, L, VERDICT } from './theme'
+import { C, F, S, TXT, R, L, OVERLAY, SHADOW, Z, VERDICT } from './theme'
 import type { VerdictKey } from './theme'
 import type { IngredientCard } from './lib/api'
 
@@ -369,8 +369,8 @@ export function Toast({ message, onDone, duration = 2800 }: { message: string; o
   /* body 로 옮겨 그린다. Screen 의 스크롤 영역에는 transform 애니메이션이 걸려 있어
      그 안에 두면 position:fixed 의 기준이 그 요소가 되고, 하단 액션 영역 뒤로 깔린다. */
   return createPortal(
-    <div className="fixed left-0 right-0 flex justify-center anim-fade-up" style={{ bottom: S.x3, zIndex: 60, padding: `0 ${L.pageX}px`, pointerEvents: 'none' }}>
-      <p style={{ ...TXT.label, color: C.white, textAlign: 'center', backgroundColor: 'rgba(25,31,40,0.92)', padding: `${S.md}px ${S.lg}px`, borderRadius: R.md, boxShadow: '0 8px 24px rgba(25,31,40,0.24)' }}>{message}</p>
+    <div className="fixed left-0 right-0 flex justify-center anim-fade-up" style={{ bottom: S.x3, zIndex: Z.toast, padding: `0 ${L.pageX}px`, pointerEvents: 'none' }}>
+      <p style={{ ...TXT.label, color: C.white, textAlign: 'center', backgroundColor: OVERLAY.toast, padding: `${S.md}px ${S.lg}px`, borderRadius: R.md, boxShadow: SHADOW.toast }}>{message}</p>
     </div>,
     document.body,
   )
@@ -423,8 +423,8 @@ export function ShareAppButton() {
 
 export function Sheet({ title, onClose, children, footer }: { title: string; onClose: () => void; children: ReactNode; footer?: ReactNode }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center anim-fade-in" style={{ top: L.navH, backgroundColor: 'rgba(25,31,40,0.48)', backdropFilter: 'blur(3px)', padding: L.pageX }} onClick={onClose}>
-      <div className="w-full bg-white overflow-hidden flex flex-col anim-sheet" style={{ maxWidth: 400, maxHeight: '82dvh', borderRadius: R.xl, boxShadow: '0 20px 50px rgba(25,31,40,0.20)' }} onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 flex items-center justify-center anim-fade-in" style={{ zIndex: Z.sheet, top: L.navH, backgroundColor: OVERLAY.scrim, backdropFilter: 'blur(3px)', padding: L.pageX }} onClick={onClose}>
+      <div className="w-full bg-white overflow-hidden flex flex-col anim-sheet" style={{ maxWidth: 400, maxHeight: '82dvh', borderRadius: R.xl, boxShadow: SHADOW.sheet }} onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between shrink-0" style={{ padding: `${S.xl}px ${S.xl}px ${S.lg}px` }}>
           <p style={TXT.section}>{title}</p>
           <button onClick={onClose} className="flex items-center justify-center transition-opacity active:opacity-60" style={{ width: 32, height: 32, marginRight: -6 }}><IconClose size={20} /></button>
