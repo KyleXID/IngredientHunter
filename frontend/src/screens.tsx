@@ -589,8 +589,8 @@ export function ResultScreen() {
               <p style={{ ...TXT.caption, color: v.toneText, marginTop: 2 }}>{summarize(result.totalDetected, result.ingredients)}</p>
             </div>
           </div>
-          {/* 안내 순서: 정보 제한 > 다이어트 효과 없음 > 카페인(백엔드에서 검출 여부가 오면 추가) */}
-          <NoticeStack items={[result.note, result.noDietEffect && '제품에 포함된 감미료는 다이어트에 긍정적 효과는 없어요.']} />
+          {/* 안내 순서: 다이어트 효과 없음 > 카페인(백엔드에서 검출 여부가 오면 추가) */}
+          <NoticeStack items={[result.noDietEffect && '제품에 포함된 감미료는 다이어트에 긍정적 효과는 없어요.']} />
           {result.ingredients.length > 0 && (
             <div style={{ marginTop: S.xxl, display: 'flex', flexDirection: 'column', gap: S.md }}>
               {result.ingredients.map((ing, i) => <IngredientRiskCard key={ing.name} data={ing} index={i} />)}

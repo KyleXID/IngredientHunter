@@ -18,7 +18,7 @@ import java.net.http.HttpResponse
  * 성분표 이미지/제품 → 원재료 추출 → 성분 리스크 DB(ingredient_rule) 근거로 판정.
  *   · LLM(Gemini>Claude)은 "원재료명 추출"만. 판정·개인화·verdict·noDietEffect 는 DB 로직.
  *   · 검색 경로(productReportNo)는 LLM 없이 product.ingredients_json 사용.
- * 응답 계약 = 프론트 결과 화면과 1:1(verdict/productName/totalDetected/noDietEffect/note/ingredients).
+ * 응답 계약 = 프론트 결과 화면과 1:1(verdict/productName/totalDetected/coveredCount/noDietEffect/ingredients/detectedNames).
  */
 @Service
 class AnalyzeService(
@@ -118,15 +118,9 @@ class AnalyzeService(
 
         val verdict = when (worst) { 2 -> "harmful"; 1 -> "warning"; else -> "safe" }
         val covered = matched.size    // 리스크 DB에 매칭된 성분 수
-        val note = when {
-            // 매칭 0건은 "안전"이 아니라 "아직 DB에 없어 판단 못 함" — 정직하게 구분
-            covered == 0 -> "입력·인식된 성분이 아직 리스크 DB에 등록되지 않아 분석 정보가 제한적이에요. 참고용으로만 봐 주세요."
-            verdict == "safe" -> "조심해야 할 성분도, 유해한 성분도 찾지 못했어요. 건강 상태에 따라 다를 수 있으니 걱정된다면 전문가와 상담해 보세요."
-            else -> null
-        }
         // 유해 먼저, 그다음 주의 순으로 카드 정렬(화면 우선순위)
         cards.sortByDescending { if (it.type == "harmful") 1 else 0 }
-        return AnalyzeResult(verdict, productName, rawNames.size, covered, noDietEffect, note, cards, rawNames)
+        return AnalyzeResult(verdict, productName, rawNames.size, covered, noDietEffect, cards, rawNames)
     }
 
     /** 성분명 매칭어: 괄호 밖 본명 + 괄호 안 이명 + aliases. 2자 이상만. */
@@ -293,7 +287,6 @@ data class AnalyzeResult(
     val totalDetected: Int,
     val coveredCount: Int,        // 리스크 DB에 매칭된 성분 수(0이면 판정 근거 없음 = "안전" 아님)
     val noDietEffect: Boolean,
-    val note: String?,
     val ingredients: List<IngredientCard>,
     /** 읽어낸 원재료 이름 전체. totalDetected 와 같은 목록이며 판정 여부와 무관하다.
      *  기본값을 둬서 이 필드를 모르는 호출부도 그대로 동작한다. */

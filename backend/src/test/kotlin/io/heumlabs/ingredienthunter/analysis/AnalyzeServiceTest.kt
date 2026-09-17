@@ -75,11 +75,10 @@ class AnalyzeServiceTest {
     }
 
     @Test
-    fun `커버리지 0 - DB에 없는 성분은 안전이 아니라 정보 제한 안내`() {
+    fun `커버리지 0 - DB에 없는 성분은 매칭되지 않는다`() {
         val r = svc().judge("테스트", listOf("정체불명물질XYZ"), setOf("diabetes"))
         assertEquals("safe", r.verdict)
         assertEquals(0, r.coveredCount)
-        assertTrue(r.note?.contains("제한적") == true)
     }
 
     @Test
