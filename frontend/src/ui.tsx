@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
-import { C, F, S, TXT, R, L, VERDICT } from './theme'
+import { createPortal } from 'react-dom'
+import { C, F, S, TXT, R, L, OVERLAY, SHADOW, Z, VERDICT } from './theme'
 import type { VerdictKey } from './theme'
 import type { IngredientCard } from './lib/api'
 
@@ -83,10 +84,10 @@ export const rowDivider = (i: number) => (i === 0 ? 'none' : `1px solid ${C.gray
 /** 제품명 — 평소엔 화면 제목처럼 보이고, 탭하면 입력 필드로 바뀐다.
  *  값이 있고 비포커스면 연필, 포커스면 전체삭제.
  *  (인식된 이름이 틀렸을 때 사용자가 바로 고칠 수 있는 자리다) */
-export function ProductNameField({ initialName = '' }: { initialName?: string }) {
-  const [name, setName] = useState(initialName)
+export function ProductNameField({ name, onChange }: { name: string; onChange: (v: string) => void }) {
   const [focused, setFocused] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
+  const setName = onChange
 
   return (
     <div
@@ -144,7 +145,7 @@ export function ProductNameField({ initialName = '' }: { initialName?: string })
 }
 
 /** 화면 뼈대: 스크롤 본문 + 하단 고정 액션(본문 위에 겹쳐 페이드) */
-export function Screen({ children, footer }: { children: ReactNode; footer?: ReactNode }) {
+export function Screen({ children, footer, share = true }: { children: ReactNode; footer?: ReactNode; share?: boolean }) {
   const footerRef = useRef<HTMLDivElement>(null)
   const [footerH, setFooterH] = useState(0)
   useEffect(() => {
@@ -158,7 +159,21 @@ export function Screen({ children, footer }: { children: ReactNode; footer?: Rea
   }, [!!footer])
   return (
     <div style={{ position: 'fixed', top: L.navH, left: 0, right: 0, bottom: 0, backgroundColor: C.white }}>
-      <div className="h-full overflow-y-auto anim-fade-up" style={{ paddingBottom: footerH }}>{children}</div>
+      <div className="h-full overflow-y-auto anim-fade-up" style={{ paddingBottom: footerH }}>
+        {/* 글로벌 공유 — 모든 화면의 같은 자리(오른쪽 위)에 둔다. 그래야 '어디서든
+            여기'가 성립한다.
+            아래 -18 은 스케일 밖 값이지만 광학 보정이다. 아이콘과 본문 사이를
+            블록 간격 S.xxl(24) 로 두려는데, 탭 영역 40 안에 아이콘(20)이 가운데
+            오면서 그림 아래로 10 이 빈다. 여백은 박스가 아니라 눈에 보이는 그림
+            기준이므로 그 10 을 빼야 한다 — 40(버튼) + 32(Body 상단) - 30(그림
+            아래끝까지) = 42, 42 - 24 = 18. */}
+        {share && (
+          <div className="flex justify-end" style={{ padding: `${S.lg}px ${L.pageX}px 0`, marginBottom: -18 }}>
+            <ShareAppButton />
+          </div>
+        )}
+        {children}
+      </div>
       {footer && (
         <div
           ref={footerRef}
@@ -339,10 +354,77 @@ export function VerdictBadge({ verdict }: { verdict: VerdictKey }) {
   return <Pill bg={v.surface} fg={v.toneText}>{v.badge}</Pill>
 }
 
+/** 공유가 안 되는 환경에서 두 공유(결과 이미지·서비스 링크)가 똑같이 내보내는 말. */
+const SHARE_UNAVAILABLE = '휴대폰에서 다른 앱으로 공유할 수 있어요.'
+
+/** 토스트 — 화면을 막지 않고 잠깐 알리고 사라진다. 시트 위에도 떠야 해서 z 를 시트보다 높게 둔다.
+ *  누를 것이 없으므로 포인터 이벤트를 받지 않는다(뒤 버튼을 가리지 않게). */
+export function Toast({ message, onDone, duration = 2800 }: { message: string; onDone: () => void; duration?: number }) {
+  const done = useRef(onDone)
+  done.current = onDone
+  useEffect(() => {
+    const t = setTimeout(() => done.current(), duration)
+    return () => clearTimeout(t)
+  }, [message, duration])
+  /* body 로 옮겨 그린다. Screen 의 스크롤 영역에는 transform 애니메이션이 걸려 있어
+     그 안에 두면 position:fixed 의 기준이 그 요소가 되고, 하단 액션 영역 뒤로 깔린다. */
+  return createPortal(
+    <div className="fixed left-0 right-0 flex justify-center anim-fade-up" style={{ bottom: S.x3, zIndex: Z.toast, padding: `0 ${L.pageX}px`, pointerEvents: 'none' }}>
+      <p style={{ ...TXT.label, color: C.white, textAlign: 'center', backgroundColor: OVERLAY.toast, padding: `${S.md}px ${S.lg}px`, borderRadius: R.md, boxShadow: SHADOW.toast }}>{message}</p>
+    </div>,
+    document.body,
+  )
+}
+
+/** 서비스 링크 공유 — 결과 이미지가 아니라 "이 앱 자체"를 알리는 글로벌 공유다.
+ *  히어로 오른쪽 위에 아이콘만 둔다. 어느 화면에서 눌러도 같은 자리에 있어야
+ *  '글로벌'이라는 말이 성립한다.
+ *
+ *  모바일은 OS 공유 시트(카카오톡·인스타 등), 공유가 막힌 데스크톱은 링크 복사.
+ *  아이콘만 있어 글자를 바꿔 알릴 자리가 없으므로 결과는 토스트로 알린다.
+ *  공유 주소는 항상 인트로(/) 고정 — 결과 화면 주소를 남에게 주면 맥락이 없다. */
+export function ShareAppButton() {
+  const [toast, setToast] = useState('')
+
+  async function share() {
+    const url = new URL(import.meta.env.BASE_URL, window.location.origin).href
+    if (navigator.share) {
+      /* 공유 시트를 띄우면서 클립보드에도 넣어 둔다 — 시트에서 '복사'를 다시 찾지
+         않아도 되게. await 하지 않는다: 기다리는 사이 사용자 제스처가 풀려 공유
+         시트가 안 뜨는 브라우저가 있다. 클립보드는 덤이라 실패해도 그냥 넘어간다. */
+      navigator.clipboard?.writeText(url).catch(() => {})
+      try {
+        return await navigator.share({ title: document.title, text: '전성분 표를 찍으면 조심해야 할 성분을 찾아줘요.', url })
+      } catch (e) {
+        if ((e as Error)?.name === 'AbortError') return // 사용자가 공유 시트를 닫은 것
+      }
+    }
+    // 공유가 막힌 환경(대부분 데스크톱) — 결과 이미지 공유와 같은 말로 안내한다
+    setToast(SHARE_UNAVAILABLE)
+  }
+
+  return (
+    <>
+      {toast && <Toast message={toast} onDone={() => setToast('')} />}
+      {/* 탭 영역 40 은 지키고 여백만 당긴다. 40 박스 안에서 아이콘(20)이 가운데
+          오므로 좌우로 10 씩 빈다 — 오른쪽 -12 로 아이콘 박스의 빈 여백까지
+          빼야 그림이 본문 오른쪽 선(20)에 맞아 보인다. 세로 자리는 Screen 이 잡는다. */}
+      <button
+        aria-label="서비스 링크 공유하기"
+        onClick={share}
+        className="flex items-center justify-center transition-opacity active:opacity-60"
+        style={{ width: 40, height: 40, marginRight: -S.md }}
+      >
+        <IconShare size={20} color={C.gray400} />
+      </button>
+    </>
+  )
+}
+
 export function Sheet({ title, onClose, children, footer }: { title: string; onClose: () => void; children: ReactNode; footer?: ReactNode }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center anim-fade-in" style={{ top: L.navH, backgroundColor: 'rgba(25,31,40,0.48)', backdropFilter: 'blur(3px)', padding: L.pageX }} onClick={onClose}>
-      <div className="w-full bg-white overflow-hidden flex flex-col anim-sheet" style={{ maxWidth: 400, maxHeight: '82dvh', borderRadius: R.xl, boxShadow: '0 20px 50px rgba(25,31,40,0.20)' }} onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 flex items-center justify-center anim-fade-in" style={{ zIndex: Z.sheet, top: L.navH, backgroundColor: OVERLAY.scrim, backdropFilter: 'blur(3px)', padding: L.pageX }} onClick={onClose}>
+      <div className="w-full bg-white overflow-hidden flex flex-col anim-sheet" style={{ maxWidth: 400, maxHeight: '82dvh', borderRadius: R.xl, boxShadow: SHADOW.sheet }} onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between shrink-0" style={{ padding: `${S.xl}px ${S.xl}px ${S.lg}px` }}>
           <p style={TXT.section}>{title}</p>
           <button onClick={onClose} className="flex items-center justify-center transition-opacity active:opacity-60" style={{ width: 32, height: 32, marginRight: -6 }}><IconClose size={20} /></button>
@@ -498,13 +580,78 @@ export function LogConsentModal({ onClose }: { onClose: () => void }) {
   )
 }
 
+/** 공유 카드를 PNG 로 만든다. html2canvas-pro 는 무거우니 버튼을 누른 순간에만 받아온다.
+ *  (-pro 를 쓰는 이유: Tailwind v4 가 깔아두는 oklch() 색을 원본 html2canvas 가 못 읽는다.) */
+async function cardToBlob(el: HTMLElement): Promise<Blob | null> {
+  const { default: html2canvas } = await import('html2canvas-pro')
+  const canvas = await html2canvas(el, { scale: 2, backgroundColor: C.white, logging: false })
+  return new Promise((resolve) => canvas.toBlob(resolve, 'image/png'))
+}
+
+/** 파일명에 쓸 수 없는 문자를 걷어낸다. 제품명이 비면 기본값. */
+function imageFileName(productName: string) {
+  const base = productName.trim().replace(/[\\/:*?"<>|]/g, '').slice(0, 40)
+  return `${base || '성분분석'}.png`
+}
+
 export function ShareModal({ verdict, productName, total, ingredients, onClose }: { verdict: VerdictKey; productName: string; total: number; ingredients: IngredientCard[]; onClose: () => void }) {
   const v = VERDICT[verdict]
+  const cardRef = useRef<HTMLDivElement>(null)
+  const [busy, setBusy] = useState<'save' | 'share' | null>(null)
+  const [toast, setToast] = useState('')
+
+  function download(blob: Blob) {
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = imageFileName(productName)
+    a.click()
+    // 즉시 해제하면 일부 브라우저가 내려받기를 시작하기 전에 URL 이 사라진다.
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
+  }
+
+  async function run(mode: 'save' | 'share') {
+    if (busy || !cardRef.current) return
+    setBusy(mode)
+    try {
+      const blob = await cardToBlob(cardRef.current)
+      if (!blob) return
+      if (mode === 'save') return download(blob)
+
+      const file = new File([blob], imageFileName(productName), { type: 'image/png' })
+      /* 공유를 못 하는 환경(대부분 데스크톱)에서 말없이 저장해 버리면 사용자가 무엇이
+         일어났는지 모른다. 어디서 되는지 알려주고, 저장은 옆 버튼으로 남겨 둔다. */
+      if (!navigator.share || !navigator.canShare?.({ files: [file] })) {
+        return setToast(SHARE_UNAVAILABLE)
+      }
+      await navigator.share({ files: [file], title: productName.trim() || v.title })
+    } catch (e) {
+      // 공유 시트를 사용자가 닫은 건 오류가 아니다.
+      if ((e as Error)?.name !== 'AbortError') console.error(e)
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  /* 두 버튼은 기기와 상관없이 항상 같이 낸다. 공유 가능 여부로 버튼을 숨기면 화면이
+     기기마다 달라져 검토가 안 되고, 정작 공유를 쓸 모바일에서만 보이게 된다.
+     공유가 막힌 데스크톱에서는 run() 이 저장으로 떨어뜨린다. */
+  const footer = (
+    <div className="flex" style={{ gap: S.sm }}>
+      <div className="flex-1"><Button variant="secondary" disabled={!!busy} icon={<IconDownload size={19} color={C.gray700} />} onClick={() => run('save')}>{busy === 'save' ? '만드는 중' : '이미지 저장'}</Button></div>
+      <div className="flex-1"><Button disabled={!!busy} icon={<IconShare size={19} />} onClick={() => run('share')}>{busy === 'share' ? '만드는 중' : '공유'}</Button></div>
+    </div>
+  )
+
   return (
-    <Sheet title="이미지로 공유" onClose={onClose} footer={<Button icon={<IconDownload size={19} />} onClick={onClose}>이미지 저장</Button>}>
-      <div style={{ borderRadius: R.lg, overflow: 'hidden', border: `1px solid ${C.gray100}` }}>
+    <>
+    {toast && <Toast message={toast} onDone={() => setToast('')} />}
+    <Sheet title="이미지로 공유" onClose={onClose} footer={footer}>
+      <div ref={cardRef} style={{ borderRadius: R.lg, overflow: 'hidden', border: `1px solid ${C.gray100}` }}>
+        {/* 제품명을 모를 수 있다(사진 분석에서 이름을 못 읽고 사용자가 적지도 않은 경우).
+            그때는 제목 자리를 비우지 않고 판정 문구를 올린다 — 카드만 봐도 무엇에 대한 결과인지 남는다. */}
         <div style={{ backgroundColor: v.surface, padding: `${S.xxl}px ${S.xl}px` }}>
-          <p style={TXT.productName}>{productName}</p>
+          <p style={TXT.productName}>{productName.trim() || v.title}</p>
           <p style={{ ...TXT.caption, color: v.toneText, marginTop: S.xs }}>{summarize(total, ingredients)}</p>
         </div>
         <div style={{ padding: `${S.lg}px ${S.xl}px ${S.xl}px`, backgroundColor: C.white }}>
@@ -522,5 +669,6 @@ export function ShareModal({ verdict, productName, total, ingredients, onClose }
         </div>
       </div>
     </Sheet>
+    </>
   )
 }

@@ -14,8 +14,9 @@ export interface AnalyzeResult {
   productName: string
   totalDetected: number
   noDietEffect: boolean
-  note: string | null
   ingredients: IngredientCard[]
+  /** 읽어낸 원재료 이름 전체 — 판정 여부와 무관. 서버가 안 주는 버전도 있으므로 optional */
+  detectedNames?: string[]
 }
 
 /** GET /api/health-survey — 그룹형 */

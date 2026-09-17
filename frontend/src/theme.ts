@@ -42,6 +42,22 @@ export const TXT = {
   caption: { fontFamily: F.rg, fontWeight: 400, fontSize: 13, lineHeight: 1.55, letterSpacing: '-0.01em', color: C.gray500 },
 } as const
 
+/** Overlay — 새 색이 아니라 gray900(#191F28)을 투명도만 달리해 덮는 것이다. */
+export const OVERLAY = {
+  scrim: 'rgba(25,31,40,0.48)', // 모달 뒷배경
+  toast: 'rgba(25,31,40,0.92)', // 토스트 면
+} as const
+
+/** Shadow — 3종. 떠 있는 높이가 클수록 멀리·옅게 번진다. */
+export const SHADOW = {
+  dropdown: '0 12px 32px rgba(25,31,40,0.10)',
+  sheet: '0 20px 50px rgba(25,31,40,0.20)',
+  toast: '0 8px 24px rgba(25,31,40,0.24)',
+} as const
+
+/** 겹침 순서 — z 값을 화면에 직접 쓰지 않는다. 토스트는 모달 위에도 떠야 한다. */
+export const Z = { dropdown: 10, sheet: 50, toast: 60 } as const
+
 /** Radius */
 export const R = { chip: 999, xs: 8, sm: 10, md: 14, lg: 16, xl: 20 } as const
 

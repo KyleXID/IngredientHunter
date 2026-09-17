@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { ChangeEvent } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { C, F, S, TXT, R, L, VERDICT } from './theme'
+import { C, F, S, TXT, R, L, SHADOW, Z, VERDICT } from './theme'
 import {
   Screen, Body, PageTitle, SectionLabel, InlineAction, ProductChip, ProductNameField, Button, Collapse, TextLink, TextLinkRow, Card,
   VerdictBadge, CheckBox, RadioMark, ConsentRow, NoticeStack, HowItWorksModal, HealthConsentModal, LogConsentModal, ShareModal, summarize,
@@ -187,7 +187,7 @@ export function IntroScreen() {
             </div>
 
             {showDropdown && (
-              <div className="absolute left-0 right-0 overflow-hidden z-10 anim-fade-up" style={{ top: '100%', marginTop: S.sm, backgroundColor: C.white, borderRadius: R.md, border: `1px solid ${C.gray100}`, boxShadow: '0 12px 32px rgba(25,31,40,0.10)' }}>
+              <div className="absolute left-0 right-0 overflow-hidden anim-fade-up" style={{ zIndex: Z.dropdown, top: '100%', marginTop: S.sm, backgroundColor: C.white, borderRadius: R.md, border: `1px solid ${C.gray100}`, boxShadow: SHADOW.dropdown }}>
                 {/* 보이는 화면 높이에서 계산한 만큼만 열고, 넘치면 리스트만 스크롤한다.
                     대체 경로 줄은 리스트의 마지막 항목으로 들어간다. */}
                 <div style={{ maxHeight: listMax, overflowY: 'auto' }}>
@@ -254,6 +254,11 @@ export function SurveyScreen() {
   const revealAll = useState(() => saved.completed)[0]
   const groupRefs = useRef<Record<string, HTMLDivElement | null>>({})
   const shownCount = useRef(0)
+
+  /* 공유 링크·주소 직접 입력으로 들어오면 분석 대상이 없다. 그대로 두면 데모 데이터로
+     결과가 나오므로 인트로로 돌려보낸다. '건강 정보 수정'(edit)은 대상 없이도 유효하다. */
+  const hasSource = !!(source.productReportNo || source.imageBase64)
+  useEffect(() => { if (!edit && !hasSource) nav('/', { replace: true }) }, [edit, hasSource, nav])
 
   useEffect(() => { getHealthSurvey().then(setGroups).catch(() => setGroups([])) }, [])
   // 설문 선택·동의를 로컬에 저장 → 다시 들어와도 유지(completed 플래그는 보존)
@@ -505,7 +510,7 @@ export function LoadingScreen() {
   }, [])
 
   return (
-    <Screen>
+    <Screen share={false}>
       <div className="flex flex-col items-center justify-center h-full" style={{ padding: `0 ${L.pageX + 20}px` }}>
         <svg width="44" height="44" viewBox="0 0 48 48" fill="none" className="animate-spin">
           <circle cx="24" cy="24" r="20" stroke={C.gray50} strokeWidth="4" />
@@ -553,6 +558,10 @@ export function ResultScreen() {
   const nav = useNavigate()
   const { result, reset } = useFlow()
   const [showShare, setShowShare] = useState(false)
+  /* 제품명은 결과 화면이 들고 있는다. 사용자가 고치면 공유 카드에도 그대로 반영돼야 한다.
+     인식된 이름이 틀렸을 때 바로잡는 것이 이 입력의 목적이기 때문이다. */
+  const [productName, setProductName] = useState(result?.productName ?? '')
+  useEffect(() => { setProductName(result?.productName ?? '') }, [result?.productName])
 
   useEffect(() => { if (!result) nav('/', { replace: true }) }, [result, nav])
   if (!result) return null
@@ -562,7 +571,7 @@ export function ResultScreen() {
 
   return (
     <>
-      {showShare && <ShareModal verdict={result.verdict} productName={result.productName} total={result.totalDetected} ingredients={result.ingredients} onClose={() => setShowShare(false)} />}
+      {showShare && <ShareModal verdict={result.verdict} productName={productName} total={result.totalDetected} ingredients={result.ingredients} onClose={() => setShowShare(false)} />}
       <Screen
         footer={
           <div className="flex" style={{ gap: S.md }}>
@@ -572,8 +581,7 @@ export function ResultScreen() {
         }
       >
         <Body>
-          {/* key: 다른 결과로 바뀌면 입력 상태를 새 제품명으로 다시 시작한다 */}
-          <ProductNameField key={result.productName} initialName={result.productName} />
+          <ProductNameField name={productName} onChange={setProductName} />
           <div className="flex items-center" style={{ gap: S.md, marginTop: S.xl, padding: `${S.lg}px ${S.xl}px`, borderRadius: R.lg, backgroundColor: v.surface }}>
             <div className="shrink-0 anim-pop"><VIcon size={22} color={v.tone} /></div>
             <div className="flex-1 min-w-0">
@@ -581,12 +589,20 @@ export function ResultScreen() {
               <p style={{ ...TXT.caption, color: v.toneText, marginTop: 2 }}>{summarize(result.totalDetected, result.ingredients)}</p>
             </div>
           </div>
-          {/* 안내 순서: 정보 제한 > 다이어트 효과 없음 > 카페인(백엔드에서 검출 여부가 오면 추가) */}
-          <NoticeStack items={[result.note, result.noDietEffect && '제품에 포함된 감미료는 다이어트에 긍정적 효과는 없어요.']} />
+          {/* 안내 순서: 다이어트 효과 없음 > 카페인(백엔드에서 검출 여부가 오면 추가) */}
+          <NoticeStack items={[result.noDietEffect && '제품에 포함된 감미료는 다이어트에 긍정적 효과는 없어요.']} />
           {result.ingredients.length > 0 && (
             <div style={{ marginTop: S.xxl, display: 'flex', flexDirection: 'column', gap: S.md }}>
               {result.ingredients.map((ing, i) => <IngredientRiskCard key={ing.name} data={ing} index={i} />)}
             </div>
+          )}
+
+          {/* 읽어낸 원재료 전체. 판정이 붙은 성분(위 카드)과 달리 목록으로 세우지 않고
+              한 문단으로 흘린다 — 참고 정보지 읽고 판단할 대상이 아니기 때문이다. */}
+          {(result.detectedNames?.length ?? 0) > 0 && (
+            <p style={{ ...TXT.caption, marginTop: S.xxl }}>
+              검출 성분 {result.detectedNames!.length}개: {result.detectedNames!.join(', ')}
+            </p>
           )}
         </Body>
       </Screen>
@@ -598,7 +614,10 @@ export function ResultScreen() {
 export function ErrorScreen() {
   const nav = useNavigate()
   const { type } = useParams<{ type: string }>()
+  const { pending } = useFlow()
   const isService = type !== 'unclear'
+  // 분석을 거치지 않고 주소로 바로 들어온 경우 — 보여줄 맥락이 없다
+  useEffect(() => { if (!pending) nav('/', { replace: true }) }, [pending, nav])
   return (
     <Screen
       footer={
