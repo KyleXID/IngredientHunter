@@ -558,6 +558,10 @@ export function ResultScreen() {
   const nav = useNavigate()
   const { result, reset } = useFlow()
   const [showShare, setShowShare] = useState(false)
+  /* 제품명은 결과 화면이 들고 있는다. 사용자가 고치면 공유 카드에도 그대로 반영돼야 한다.
+     인식된 이름이 틀렸을 때 바로잡는 것이 이 입력의 목적이기 때문이다. */
+  const [productName, setProductName] = useState(result?.productName ?? '')
+  useEffect(() => { setProductName(result?.productName ?? '') }, [result?.productName])
 
   useEffect(() => { if (!result) nav('/', { replace: true }) }, [result, nav])
   if (!result) return null
@@ -567,7 +571,7 @@ export function ResultScreen() {
 
   return (
     <>
-      {showShare && <ShareModal verdict={result.verdict} productName={result.productName} total={result.totalDetected} ingredients={result.ingredients} onClose={() => setShowShare(false)} />}
+      {showShare && <ShareModal verdict={result.verdict} productName={productName} total={result.totalDetected} ingredients={result.ingredients} onClose={() => setShowShare(false)} />}
       <Screen
         footer={
           <div className="flex" style={{ gap: S.md }}>
@@ -577,8 +581,7 @@ export function ResultScreen() {
         }
       >
         <Body>
-          {/* key: 다른 결과로 바뀌면 입력 상태를 새 제품명으로 다시 시작한다 */}
-          <ProductNameField key={result.productName} initialName={result.productName} />
+          <ProductNameField name={productName} onChange={setProductName} />
           <div className="flex items-center" style={{ gap: S.md, marginTop: S.xl, padding: `${S.lg}px ${S.xl}px`, borderRadius: R.lg, backgroundColor: v.surface }}>
             <div className="shrink-0 anim-pop"><VIcon size={22} color={v.tone} /></div>
             <div className="flex-1 min-w-0">

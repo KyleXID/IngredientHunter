@@ -83,10 +83,10 @@ export const rowDivider = (i: number) => (i === 0 ? 'none' : `1px solid ${C.gray
 /** 제품명 — 평소엔 화면 제목처럼 보이고, 탭하면 입력 필드로 바뀐다.
  *  값이 있고 비포커스면 연필, 포커스면 전체삭제.
  *  (인식된 이름이 틀렸을 때 사용자가 바로 고칠 수 있는 자리다) */
-export function ProductNameField({ initialName = '' }: { initialName?: string }) {
-  const [name, setName] = useState(initialName)
+export function ProductNameField({ name, onChange }: { name: string; onChange: (v: string) => void }) {
   const [focused, setFocused] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
+  const setName = onChange
 
   return (
     <div
