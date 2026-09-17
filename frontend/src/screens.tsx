@@ -4,7 +4,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { C, F, S, TXT, R, L, VERDICT } from './theme'
 import {
   Screen, Body, PageTitle, SectionLabel, InlineAction, ProductChip, ProductNameField, Button, Collapse, TextLink, TextLinkRow, Card,
-  VerdictBadge, CheckBox, RadioMark, ConsentRow, NoticeStack, HowItWorksModal, HealthConsentModal, LogConsentModal, ShareModal, summarize,
+  VerdictBadge, CheckBox, RadioMark, ConsentRow, NoticeStack, HowItWorksModal, HealthConsentModal, LogConsentModal, ShareModal, ShareAppLink, summarize,
   rowDivider, ROW_TEXT_INSET,
   IconSearch, IconCamera, IconImage, IconArrowRight, IconChevronLeft, IconCheck,
   IconWarning, IconDanger, IconInfo, IconRefresh, IconShare, IconClose,
@@ -144,6 +144,7 @@ export function IntroScreen() {
             <Button icon={<IconCamera size={19} />} onClick={() => nav('/photo')}>사진 찍고 분석하기</Button>
             <TextLinkRow>
               <TextLink onClick={() => setShowHow(true)} iconRight={<IconInfo size={16} color={C.gray300} />}>어떻게 분석하나요</TextLink>
+              <ShareAppLink />
             </TextLinkRow>
           </>
         }

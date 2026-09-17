@@ -339,6 +339,37 @@ export function VerdictBadge({ verdict }: { verdict: VerdictKey }) {
   return <Pill bg={v.surface} fg={v.toneText}>{v.badge}</Pill>
 }
 
+/** 서비스 링크 공유 — 결과 이미지가 아니라 "이 앱 자체"를 알리는 글로벌 공유다.
+ *  모바일은 OS 공유 시트(카카오톡·인스타 등), 공유가 없는 데스크톱은 링크 복사로 떨어진다.
+ *  공유 주소는 항상 인트로(/) 고정 — 결과 화면 주소를 남에게 주면 맥락이 없다. */
+export function ShareAppLink() {
+  const [copied, setCopied] = useState(false)
+
+  async function share() {
+    const url = new URL(import.meta.env.BASE_URL, window.location.origin).href
+    const data = { title: document.title, text: '전성분 표를 찍으면 조심해야 할 성분을 찾아줘요.', url }
+    try {
+      if (navigator.share) return await navigator.share(data)
+    } catch (e) {
+      if ((e as Error)?.name === 'AbortError') return // 사용자가 공유 시트를 닫은 것
+      // 그 밖의 실패는 공유가 막힌 환경으로 보고 복사로 넘어간다
+    }
+    try {
+      await navigator.clipboard.writeText(url)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch (e) {
+      console.error(e)
+    }
+  }
+
+  return (
+    <TextLink onClick={share} iconRight={<IconShare size={16} color={C.gray300} />}>
+      {copied ? '링크를 복사했어요' : '친구에게 알려주기'}
+    </TextLink>
+  )
+}
+
 export function Sheet({ title, onClose, children, footer }: { title: string; onClose: () => void; children: ReactNode; footer?: ReactNode }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center anim-fade-in" style={{ top: L.navH, backgroundColor: 'rgba(25,31,40,0.48)', backdropFilter: 'blur(3px)', padding: L.pageX }} onClick={onClose}>
