@@ -498,11 +498,72 @@ export function LogConsentModal({ onClose }: { onClose: () => void }) {
   )
 }
 
+/** 공유 카드를 PNG 로 만든다. html2canvas-pro 는 무거우니 버튼을 누른 순간에만 받아온다.
+ *  (-pro 를 쓰는 이유: Tailwind v4 가 깔아두는 oklch() 색을 원본 html2canvas 가 못 읽는다.) */
+async function cardToBlob(el: HTMLElement): Promise<Blob | null> {
+  const { default: html2canvas } = await import('html2canvas-pro')
+  const canvas = await html2canvas(el, { scale: 2, backgroundColor: C.white, logging: false })
+  return new Promise((resolve) => canvas.toBlob(resolve, 'image/png'))
+}
+
+/** 파일명에 쓸 수 없는 문자를 걷어낸다. 제품명이 비면 기본값. */
+function imageFileName(productName: string) {
+  const base = productName.trim().replace(/[\\/:*?"<>|]/g, '').slice(0, 40)
+  return `${base || '성분분석'}.png`
+}
+
 export function ShareModal({ verdict, productName, total, ingredients, onClose }: { verdict: VerdictKey; productName: string; total: number; ingredients: IngredientCard[]; onClose: () => void }) {
   const v = VERDICT[verdict]
+  const cardRef = useRef<HTMLDivElement>(null)
+  const [busy, setBusy] = useState<'save' | 'share' | null>(null)
+
+  // 파일 공유를 지원하는 브라우저에서만 공유 버튼을 낸다(데스크톱 브라우저는 대부분 미지원).
+  // canShare 는 파일 없이 물으면 true 를 주므로, 실제 판단은 눌렀을 때 파일로 다시 한다.
+  const canShare = typeof navigator !== 'undefined' && typeof navigator.canShare === 'function'
+
+  function download(blob: Blob) {
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = imageFileName(productName)
+    a.click()
+    // 즉시 해제하면 일부 브라우저가 내려받기를 시작하기 전에 URL 이 사라진다.
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
+  }
+
+  async function run(mode: 'save' | 'share') {
+    if (busy || !cardRef.current) return
+    setBusy(mode)
+    try {
+      const blob = await cardToBlob(cardRef.current)
+      if (!blob) return
+      if (mode === 'save') return download(blob)
+
+      const file = new File([blob], imageFileName(productName), { type: 'image/png' })
+      // 공유를 못 하는 환경이면 조용히 저장으로 떨어뜨린다 — 버튼을 눌렀는데 아무 일도 없으면 안 된다.
+      if (!navigator.canShare?.({ files: [file] })) return download(blob)
+      await navigator.share({ files: [file], title: productName.trim() || v.title })
+    } catch (e) {
+      // 공유 시트를 사용자가 닫은 건 오류가 아니다.
+      if ((e as Error)?.name !== 'AbortError') console.error(e)
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  const saveLabel = busy === 'save' ? '만드는 중' : '이미지 저장'
+  const footer = canShare ? (
+    <div className="flex" style={{ gap: S.sm }}>
+      <div className="flex-1"><Button variant="secondary" disabled={!!busy} icon={<IconDownload size={19} color={C.gray700} />} onClick={() => run('save')}>{saveLabel}</Button></div>
+      <div className="flex-1"><Button disabled={!!busy} icon={<IconShare size={19} />} onClick={() => run('share')}>{busy === 'share' ? '만드는 중' : '공유'}</Button></div>
+    </div>
+  ) : (
+    <Button disabled={!!busy} icon={<IconDownload size={19} />} onClick={() => run('save')}>{saveLabel}</Button>
+  )
+
   return (
-    <Sheet title="이미지로 공유" onClose={onClose} footer={<Button icon={<IconDownload size={19} />} onClick={onClose}>이미지 저장</Button>}>
-      <div style={{ borderRadius: R.lg, overflow: 'hidden', border: `1px solid ${C.gray100}` }}>
+    <Sheet title="이미지로 공유" onClose={onClose} footer={footer}>
+      <div ref={cardRef} style={{ borderRadius: R.lg, overflow: 'hidden', border: `1px solid ${C.gray100}` }}>
         {/* 제품명을 모를 수 있다(사진 분석에서 이름을 못 읽고 사용자가 적지도 않은 경우).
             그때는 제목 자리를 비우지 않고 판정 문구를 올린다 — 카드만 봐도 무엇에 대한 결과인지 남는다. */}
         <div style={{ backgroundColor: v.surface, padding: `${S.xxl}px ${S.xl}px` }}>
