@@ -587,7 +587,7 @@ export function ShareModal({ verdict, productName, total, ingredients, onClose }
       /* 공유를 못 하는 환경(대부분 데스크톱)에서 말없이 저장해 버리면 사용자가 무엇이
          일어났는지 모른다. 어디서 되는지 알려주고, 저장은 옆 버튼으로 남겨 둔다. */
       if (!navigator.share || !navigator.canShare?.({ files: [file] })) {
-        return setToast('휴대폰에서 열면 카카오톡·메시지로 바로 공유할 수 있어요.')
+        return setToast('휴대폰에서 다른 앱으로 공유할 수 있어요.')
       }
       await navigator.share({ files: [file], title: productName.trim() || v.title })
     } catch (e) {
