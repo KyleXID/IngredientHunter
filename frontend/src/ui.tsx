@@ -503,8 +503,10 @@ export function ShareModal({ verdict, productName, total, ingredients, onClose }
   return (
     <Sheet title="이미지로 공유" onClose={onClose} footer={<Button icon={<IconDownload size={19} />} onClick={onClose}>이미지 저장</Button>}>
       <div style={{ borderRadius: R.lg, overflow: 'hidden', border: `1px solid ${C.gray100}` }}>
+        {/* 제품명을 모를 수 있다(사진 분석에서 이름을 못 읽고 사용자가 적지도 않은 경우).
+            그때는 제목 자리를 비우지 않고 판정 문구를 올린다 — 카드만 봐도 무엇에 대한 결과인지 남는다. */}
         <div style={{ backgroundColor: v.surface, padding: `${S.xxl}px ${S.xl}px` }}>
-          <p style={TXT.productName}>{productName}</p>
+          <p style={TXT.productName}>{productName.trim() || v.title}</p>
           <p style={{ ...TXT.caption, color: v.toneText, marginTop: S.xs }}>{summarize(total, ingredients)}</p>
         </div>
         <div style={{ padding: `${S.lg}px ${S.xl}px ${S.xl}px`, backgroundColor: C.white }}>

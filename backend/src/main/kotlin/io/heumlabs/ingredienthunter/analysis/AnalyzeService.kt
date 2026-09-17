@@ -169,9 +169,10 @@ class AnalyzeService(
             geminiKey.isNotBlank() -> callGemini(imageBase64, media)
             anthropicKey.isNotBlank() -> callClaude(imageBase64, media)
             else -> return DEMO_PRODUCT to DEMO_NAMES
-        } ?: return "분석한 제품" to emptyList()
+        } ?: return "" to emptyList()
         val obj = runCatching { json.readValue(stripFence(raw), Map::class.java) }.getOrNull()
-        val product = (obj?.get("product") as? String)?.takeIf { it.isNotBlank() } ?: "분석한 제품"
+        // 이름을 못 읽으면 빈 값으로 둔다 — 화면이 "제품명을 입력해 주세요"로 받아 직접 적게 한다
+        val product = (obj?.get("product") as? String)?.takeIf { it.isNotBlank() } ?: ""
         val names = (obj?.get("ingredients") as? List<*>)?.filterIsInstance<String>() ?: emptyList()
         return product to names
     }
