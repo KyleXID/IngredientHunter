@@ -4,7 +4,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { C, F, S, TXT, R, L, VERDICT } from './theme'
 import {
   Screen, Body, PageTitle, SectionLabel, InlineAction, ProductChip, ProductNameField, Button, Collapse, TextLink, TextLinkRow, Card,
-  VerdictBadge, CheckBox, RadioMark, ConsentRow, NoticeStack, HowItWorksModal, HealthConsentModal, LogConsentModal, ShareModal, ShareAppLink, summarize,
+  VerdictBadge, CheckBox, RadioMark, ConsentRow, NoticeStack, HowItWorksModal, HealthConsentModal, LogConsentModal, ShareModal, ShareAppButton, summarize,
   rowDivider, ROW_TEXT_INSET,
   IconSearch, IconCamera, IconImage, IconArrowRight, IconChevronLeft, IconCheck,
   IconWarning, IconDanger, IconInfo, IconRefresh, IconShare, IconClose,
@@ -144,12 +144,15 @@ export function IntroScreen() {
             <Button icon={<IconCamera size={19} />} onClick={() => nav('/photo')}>사진 찍고 분석하기</Button>
             <TextLinkRow>
               <TextLink onClick={() => setShowHow(true)} iconRight={<IconInfo size={16} color={C.gray300} />}>어떻게 분석하나요</TextLink>
-              <ShareAppLink />
             </TextLinkRow>
           </>
         }
       >
         <Body>
+          {/* 글로벌 공유 — 검색으로 히어로가 접혀도 자리를 지켜야 하므로 Collapse 밖에 둔다 */}
+          <div className="flex justify-end">
+            <ShareAppButton />
+          </div>
           <Collapse open={!focused}>
             <PageTitle
               hero

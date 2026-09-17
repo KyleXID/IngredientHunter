@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import { C, F, S, TXT, R, L, VERDICT } from './theme'
 import type { VerdictKey } from './theme'
 import type { IngredientCard } from './lib/api'
@@ -348,18 +349,25 @@ export function Toast({ message, onDone, duration = 2800 }: { message: string; o
     const t = setTimeout(() => done.current(), duration)
     return () => clearTimeout(t)
   }, [message, duration])
-  return (
+  /* body 로 옮겨 그린다. Screen 의 스크롤 영역에는 transform 애니메이션이 걸려 있어
+     그 안에 두면 position:fixed 의 기준이 그 요소가 되고, 하단 액션 영역 뒤로 깔린다. */
+  return createPortal(
     <div className="fixed left-0 right-0 flex justify-center anim-fade-up" style={{ bottom: S.x3, zIndex: 60, padding: `0 ${L.pageX}px`, pointerEvents: 'none' }}>
       <p style={{ ...TXT.label, color: C.white, textAlign: 'center', backgroundColor: 'rgba(25,31,40,0.92)', padding: `${S.md}px ${S.lg}px`, borderRadius: R.md, boxShadow: '0 8px 24px rgba(25,31,40,0.24)' }}>{message}</p>
-    </div>
+    </div>,
+    document.body,
   )
 }
 
 /** 서비스 링크 공유 — 결과 이미지가 아니라 "이 앱 자체"를 알리는 글로벌 공유다.
- *  모바일은 OS 공유 시트(카카오톡·인스타 등), 공유가 없는 데스크톱은 링크 복사로 떨어진다.
+ *  히어로 오른쪽 위에 아이콘만 둔다. 어느 화면에서 눌러도 같은 자리에 있어야
+ *  '글로벌'이라는 말이 성립한다.
+ *
+ *  모바일은 OS 공유 시트(카카오톡·인스타 등), 공유가 막힌 데스크톱은 링크 복사.
+ *  아이콘만 있어 글자를 바꿔 알릴 자리가 없으므로 결과는 토스트로 알린다.
  *  공유 주소는 항상 인트로(/) 고정 — 결과 화면 주소를 남에게 주면 맥락이 없다. */
-export function ShareAppLink() {
-  const [copied, setCopied] = useState(false)
+export function ShareAppButton() {
+  const [toast, setToast] = useState('')
 
   async function share() {
     const url = new URL(import.meta.env.BASE_URL, window.location.origin).href
@@ -372,17 +380,26 @@ export function ShareAppLink() {
     }
     try {
       await navigator.clipboard.writeText(url)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    } catch (e) {
-      console.error(e)
+      setToast('링크를 복사했어요.')
+    } catch {
+      setToast('링크를 복사하지 못했어요.')
     }
   }
 
   return (
-    <TextLink onClick={share} iconRight={<IconShare size={16} color={C.gray300} />}>
-      {copied ? '링크를 복사했어요' : '친구에게 알려주기'}
-    </TextLink>
+    <>
+      {toast && <Toast message={toast} onDone={() => setToast('')} />}
+      {/* 40 탭 영역. 아이콘 박스의 빈 여백(약 2)까지 감안해 오른쪽으로 8 당겨야
+          그림이 본문 오른쪽 선에 맞아 보인다. */}
+      <button
+        aria-label="서비스 링크 공유하기"
+        onClick={share}
+        className="flex items-center justify-center transition-opacity active:opacity-60"
+        style={{ width: 40, height: 40, marginRight: -S.sm }}
+      >
+        <IconShare size={20} color={C.gray400} />
+      </button>
+    </>
   )
 }
 
