@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<!--
+  공유 링크 미리보기 이미지(og:image)의 원본. 여기서 고치고 아래 명령으로 다시 뽑는다.
+
+    cd frontend && "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
+      --headless --disable-gpu --hide-scrollbars --allow-file-access-from-files \
+      --force-device-scale-factor=1 --window-size=1200,630 \
+      --screenshot="$PWD/public/og.png" "file://$PWD/design/og.html"
+
+  1200×630 은 카카오톡·트위터가 큰 카드로 띄우는 규격이다. 다만 카톡은 이걸 폭
+  500px 안팎으로 줄여 보여주므로 화면에서 보이는 크기는 약 0.42배가 된다.
+  글자 크기를 정할 때 이 축소를 기준으로 잡아야 한다 — 40px 은 17px 로 보인다.
+  그래서 글자만 남기고 최대한 키웠다. 배지·서비스명 같은 요소는 줄면 뭉개진다.
+
+  public/ 밖에 두는 이유는 이 파일 자체가 배포 사이트에 노출될 필요가 없어서다.
+-->
+<style>
+  /* 앱과 같은 폰트 파일을 그대로 쓴다 — 시스템 폰트로 떨어지면 자간·굵기가 달라진다 */
+  @font-face { font-family: 'P-rg'; src: url('../public/fonts/Pretendard-Regular.woff2') format('woff2'); font-weight: 400; }
+  @font-face { font-family: 'P-sb'; src: url('../public/fonts/Pretendard_Variable-SemiBold.woff2') format('woff2'); font-weight: 600; }
+
+  /* 디자인 토큰 (theme.ts 와 동일) */
+  :root { --gray900: #191F28; --gray600: #4E5968; --white: #FFFFFF; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    width: 1200px; height: 630px; background: var(--white); overflow: hidden;
+    display: flex; flex-direction: column; justify-content: center;
+    padding: 0 88px;
+  }
+
+  /* hero(32) 를 3.6배로 키운 것. 자간·행간 비율은 그대로 둔다. */
+  .hero {
+    font-family: 'P-sb', sans-serif; font-weight: 600; font-size: 116px; line-height: 1.25;
+    letter-spacing: -0.05em; color: var(--gray900);
+  }
+  /* body(15) 를 2.8배 */
+  .desc {
+    font-family: 'P-rg', sans-serif; font-weight: 400; font-size: 42px; line-height: 1.5;
+    letter-spacing: -0.02em; color: var(--gray600); margin-top: 48px;
+  }
+</style>
+</head>
+<body>
+  <p class="hero">배 아프다는 대체당,<br />이 제품에는 없을까?</p>
+  <p class="desc">전성분 표를 찍거나 제품명을 검색하면,<br />조심해야 할 성분을 찾아드려요.</p>
+</body>
+</html>
