@@ -594,8 +594,25 @@ function imageFileName(productName: string) {
 export function ShareModal({ verdict, productName, total, ingredients, onClose }: { verdict: VerdictKey; productName: string; total: number; ingredients: IngredientCard[]; onClose: () => void }) {
   const v = VERDICT[verdict]
   const cardRef = useRef<HTMLDivElement>(null)
-  const [busy, setBusy] = useState(false)
+  const [file, setFile] = useState<File | null>(null)
   const [toast, setToast] = useState('')
+
+  /* 카드 이미지는 시트가 열릴 때 미리 만들어 둔다.
+     버튼을 누른 뒤에 만들면 안 된다 — navigator.share 는 사용자 제스처 직후에만
+     부를 수 있는데, 그 사이 이미지를 만드느라 수백 ms 가 지나면 제스처가 풀려
+     iOS 가 공유 시트를 조용히 거부한다(에러도 없이 아무 일도 일어나지 않는다).
+     시트 진입 모션(280ms)이 끝난 뒤 찍어야 변형이 섞이지 않는다. */
+  useEffect(() => {
+    let alive = true
+    const t = setTimeout(async () => {
+      const el = cardRef.current
+      if (!el) return
+      const blob = await cardToBlob(el)
+      if (!alive || !blob) return
+      setFile(new File([blob], imageFileName(productName), { type: 'image/png' }))
+    }, 320)
+    return () => { alive = false; clearTimeout(t) }
+  }, [productName])
 
   function download(blob: Blob) {
     const url = URL.createObjectURL(blob)
@@ -610,29 +627,25 @@ export function ShareModal({ verdict, productName, total, ingredients, onClose }
   /* 버튼 하나로 OS 공유 시트를 연다. 시트 안에 '이미지 저장'(사진 앱)과 보내기가
      같이 있어서, 버튼 이름이 그 시트에서 만날 것을 그대로 예고한다.
      웹은 사진 앱에 직접 쓸 수 없다 — 앨범으로 가는 길은 이 시트뿐이다.
-     시트가 없는 데스크톱에서는 파일로 내려받고, 못 한 '공유' 쪽만 토스트로 알린다. */
-  async function run() {
-    if (busy || !cardRef.current) return
-    setBusy(true)
-    try {
-      const blob = await cardToBlob(cardRef.current)
-      if (!blob) return
-      const file = new File([blob], imageFileName(productName), { type: 'image/png' })
-      if (!navigator.share || !navigator.canShare?.({ files: [file] })) {
-        download(blob)
-        return setToast(SHARE_UNAVAILABLE)
-      }
-      await navigator.share({ files: [file], title: productName.trim() || v.title })
-    } catch (e) {
+     시트가 없는 데스크톱에서는 파일로 내려받고, 못 한 '공유' 쪽만 토스트로 알린다.
+
+     이 함수는 async 가 아니다. share() 앞에 await 가 하나라도 있으면 제스처가
+     풀려 시트가 안 뜬다. */
+  function run() {
+    if (!file) return
+    if (!navigator.share || !navigator.canShare?.({ files: [file] })) {
+      download(file)
+      setToast(SHARE_UNAVAILABLE)
+      return
+    }
+    navigator.share({ files: [file], title: productName.trim() || v.title }).catch((e) => {
       // 공유 시트를 사용자가 닫은 건 오류가 아니다.
       if ((e as Error)?.name !== 'AbortError') console.error(e)
-    } finally {
-      setBusy(false)
-    }
+    })
   }
 
   const footer = (
-    <Button disabled={busy} icon={<IconShare size={19} />} onClick={run}>{busy ? '만드는 중' : '이미지 저장·공유'}</Button>
+    <Button disabled={!file} icon={<IconShare size={19} />} onClick={run}>{file ? '이미지 저장·공유' : '만드는 중'}</Button>
   )
 
   return (
