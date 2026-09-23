@@ -402,7 +402,8 @@ export function SurveyScreen() {
 export function PhotoGuideScreen() {
   const nav = useNavigate()
   const { setSource, setPending } = useFlow()
-  const fileRef = useRef<HTMLInputElement>(null)
+  const albumRef = useRef<HTMLInputElement>(null)
+  const cameraRef = useRef<HTMLInputElement>(null)
 
   const onFile = (e: ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0]
@@ -437,10 +438,13 @@ export function PhotoGuideScreen() {
     <Screen
       footer={
         <>
-          <input ref={fileRef} type="file" accept="image/*" capture="environment" hidden onChange={onFile} />
+          {/* 입력을 둘로 나눈다. capture 가 붙은 하나를 같이 쓰면 '앨범에서 고르기'도
+              카메라가 열린다 — capture 는 기기에 "찍어서 달라"고 시키는 속성이다. */}
+          <input ref={albumRef} type="file" accept="image/*" hidden onChange={onFile} />
+          <input ref={cameraRef} type="file" accept="image/*" capture="environment" hidden onChange={onFile} />
           <div className="flex" style={{ gap: S.md }}>
-            <Button variant="secondary" icon={<IconImage size={19} color={C.gray600} />} onClick={() => fileRef.current?.click()}>앨범에서 고르기</Button>
-            <Button icon={<IconCamera size={19} />} onClick={() => fileRef.current?.click()}>사진 찍기</Button>
+            <Button variant="secondary" icon={<IconImage size={19} color={C.gray600} />} onClick={() => albumRef.current?.click()}>앨범에서 고르기</Button>
+            <Button icon={<IconCamera size={19} />} onClick={() => cameraRef.current?.click()}>사진 찍기</Button>
           </div>
           <TextLinkRow><TextLink onClick={() => nav('/')} iconLeft={<IconChevronLeft size={16} color={C.gray400} />}>뒤로가기</TextLink></TextLinkRow>
         </>

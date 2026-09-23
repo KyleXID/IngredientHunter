@@ -74,11 +74,29 @@ export async function analyze(body: AnalyzeInput): Promise<AnalyzeResult> {
 }
 
 /** 로그인 없이 기기 구분용 쿠키 id — localStorage 보관(비식별) */
+/** 무작위 id. crypto.randomUUID 는 보안 컨텍스트(HTTPS·localhost)에서만 있어서,
+ *  실기기 테스트처럼 사내망 IP 의 http 로 열면 없다. 그대로 부르면 예외가 나고
+ *  분석 시작이 조용히 죽는다. getRandomValues 는 http 에서도 있으므로 그걸로 만든다. */
+function randomId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID()
+  }
+  if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
+    const b = crypto.getRandomValues(new Uint8Array(16))
+    b[6] = (b[6] & 0x0f) | 0x40 // version 4
+    b[8] = (b[8] & 0x3f) | 0x80 // variant
+    const h = Array.from(b, (x) => x.toString(16).padStart(2, '0')).join('')
+    return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`
+  }
+  // 둘 다 없는 환경. 식별자로만 쓰이므로 충돌만 피하면 된다.
+  return `${Date.now().toString(16)}-${Math.random().toString(16).slice(2, 10)}`
+}
+
 export function getCookieId(): string {
   const KEY = 'zerodrink_cid'
   let id = localStorage.getItem(KEY)
   if (!id) {
-    id = crypto.randomUUID()
+    id = randomId()
     localStorage.setItem(KEY, id)
   }
   return id
