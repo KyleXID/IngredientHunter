@@ -50,9 +50,6 @@ export const IconRefresh = ({ size, color = C.gray600 }: IconProps) => (
 export const IconShare = ({ size, color = C.white }: IconProps) => (
   <Svg size={size}><circle cx="17.5" cy="5.5" r="2.6" stroke={color} /><circle cx="6.5" cy="12" r="2.6" stroke={color} /><circle cx="17.5" cy="18.5" r="2.6" stroke={color} /><path d="M8.9 10.6l6.2-3.6M8.9 13.4l6.2 3.6" stroke={color} /></Svg>
 )
-export const IconDownload = ({ size, color = C.white }: IconProps) => (
-  <Svg size={size}><path d="M12 4v11M7.5 10.5L12 15l4.5-4.5" stroke={color} /><path d="M4.5 19h15" stroke={color} /></Svg>
-)
 export const IconPencil = ({ size, color = C.gray400 }: IconProps) => (
   <Svg size={size}><path d="M16.4 3.6l4 4L8.4 19.6l-5 1 1-5z" stroke={color} /><path d="M14.4 5.6l4 4" stroke={color} /></Svg>
 )
@@ -597,7 +594,7 @@ function imageFileName(productName: string) {
 export function ShareModal({ verdict, productName, total, ingredients, onClose }: { verdict: VerdictKey; productName: string; total: number; ingredients: IngredientCard[]; onClose: () => void }) {
   const v = VERDICT[verdict]
   const cardRef = useRef<HTMLDivElement>(null)
-  const [busy, setBusy] = useState<'save' | 'share' | null>(null)
+  const [busy, setBusy] = useState(false)
   const [toast, setToast] = useState('')
 
   function download(blob: Blob) {
@@ -610,18 +607,19 @@ export function ShareModal({ verdict, productName, total, ingredients, onClose }
     setTimeout(() => URL.revokeObjectURL(url), 1000)
   }
 
-  async function run(mode: 'save' | 'share') {
+  /* 버튼 하나로 OS 공유 시트를 연다. 시트 안에 '이미지 저장'(사진 앱)과 보내기가
+     같이 있어서, 버튼 이름이 그 시트에서 만날 것을 그대로 예고한다.
+     웹은 사진 앱에 직접 쓸 수 없다 — 앨범으로 가는 길은 이 시트뿐이다.
+     시트가 없는 데스크톱에서는 파일로 내려받고, 못 한 '공유' 쪽만 토스트로 알린다. */
+  async function run() {
     if (busy || !cardRef.current) return
-    setBusy(mode)
+    setBusy(true)
     try {
       const blob = await cardToBlob(cardRef.current)
       if (!blob) return
-      if (mode === 'save') return download(blob)
-
       const file = new File([blob], imageFileName(productName), { type: 'image/png' })
-      /* 공유를 못 하는 환경(대부분 데스크톱)에서 말없이 저장해 버리면 사용자가 무엇이
-         일어났는지 모른다. 어디서 되는지 알려주고, 저장은 옆 버튼으로 남겨 둔다. */
       if (!navigator.share || !navigator.canShare?.({ files: [file] })) {
+        download(blob)
         return setToast(SHARE_UNAVAILABLE)
       }
       await navigator.share({ files: [file], title: productName.trim() || v.title })
@@ -629,18 +627,12 @@ export function ShareModal({ verdict, productName, total, ingredients, onClose }
       // 공유 시트를 사용자가 닫은 건 오류가 아니다.
       if ((e as Error)?.name !== 'AbortError') console.error(e)
     } finally {
-      setBusy(null)
+      setBusy(false)
     }
   }
 
-  /* 두 버튼은 기기와 상관없이 항상 같이 낸다. 공유 가능 여부로 버튼을 숨기면 화면이
-     기기마다 달라져 검토가 안 되고, 정작 공유를 쓸 모바일에서만 보이게 된다.
-     공유가 막힌 데스크톱에서는 run() 이 저장으로 떨어뜨린다. */
   const footer = (
-    <div className="flex" style={{ gap: S.sm }}>
-      <div className="flex-1"><Button variant="secondary" disabled={!!busy} icon={<IconDownload size={19} color={C.gray700} />} onClick={() => run('save')}>{busy === 'save' ? '만드는 중' : '이미지 저장'}</Button></div>
-      <div className="flex-1"><Button disabled={!!busy} icon={<IconShare size={19} />} onClick={() => run('share')}>{busy === 'share' ? '만드는 중' : '공유'}</Button></div>
-    </div>
+    <Button disabled={busy} icon={<IconShare size={19} />} onClick={run}>{busy ? '만드는 중' : '이미지 저장·공유'}</Button>
   )
 
   return (
